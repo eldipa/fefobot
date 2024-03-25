@@ -1,8 +1,0 @@
-importCode(inputPath=".", projectName="$2-2023c2-$1")
-
-val printing1 = cpg.identifier.name("cout").repeat(_.astParent)(_.until(_.isMethod)).toSet
-val printing2 = cpg.fieldAccess.code("std.*::.*cout").repeat(_.astParent)(_.until(_.isMethod)).toSet
-
-(printing1 ++ printing2).l
-
-exit
