@@ -62,4 +62,4 @@ find . -type f -not -name '*.cpp' -a -not -name '*.h' -a -not -name '.' -delete
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
-joern --nocolors < ../joern_commands.txt > ./output.txt
+joern --nocolors < ../joern_commands.scala > ./output.txt
