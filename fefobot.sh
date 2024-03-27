@@ -56,10 +56,19 @@ else
     clone "$path"
 fi
 
-cd $path
+# this part is a little bit hackish, but it seems to be working ok
+
+echo "Running Joern"
+
+cd "$path"
 # delete any non source code file recursively
 find . -type f -not -name '*.cpp' -a -not -name '*.h' -a -not -name '.' -delete
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
-joern --nocolors < ../joern_commands.scala > ./output.txt
+joern --nocolors < ../joern_commands.scala > /dev/null 2> /dev/null
+
+mv issues-"$path".json ..
+cd ..
+
+echo "Output queries saved in" issues-"$path".json

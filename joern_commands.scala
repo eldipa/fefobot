@@ -1,4 +1,8 @@
-importCode(inputPath = ".", projectName = System.getProperty("user.dir").split("/").last)
+import java.nio.file.{Paths, Files}
+import java.nio.charset.StandardCharsets
+
+val projectName = System.getProperty("user.dir").split("/").last
+importCode(inputPath = ".", projectName = projectName)
 
 
 // mapping helpers
@@ -75,7 +79,7 @@ val nestedLoops = ({
 
 
 
-Map(
+val output = Map(
   "print" -> printing.map(methodToIssue),
   "x_alloc" -> xallocCCalls.map(methodToIssue),
   "protocol_functions" -> protocolFunctionNames.map(methodToIssue),
@@ -89,5 +93,7 @@ Map(
   "long_functions" -> longFunctions.map(methodToIssue),
   "nested_loops" -> nestedLoops.map(methodToIssue)
 ).toJson
+
+Files.write(Paths.get("issues-" + projectName + ".json"), output.getBytes(StandardCharsets.UTF_8))
 
 exit
