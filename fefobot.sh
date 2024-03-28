@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 <username> <exercise> [course]"
+    echo "Usage: $0 <username> <exercise> <course>"
     exit 1
 }
 
@@ -32,17 +32,15 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if [ -z "$username" ] || [ -z "$exercise" ]; then
+if [ -z "$username" ] || [ -z "$exercise" ] || [ -z "$course" ]; then
     usage
 fi
 
-course=${course:-"2024c1"}
 path=$exercise-$course-$username
-
 
 clone() {
     echo "Cloning $exercise repo from student $username. $course"
-    gh repo clone Taller-de-Programacion-TPs/$1
+    gh repo clone "Taller-de-Programacion-TPs/$1"
 }
 
 if [ -d "$path" ]; then
@@ -63,7 +61,7 @@ echo "Running Joern"
 cd "$path"
 commit_hash=$(git rev-parse HEAD)
 # delete any non source code file recursively
-find . -type f -not -name '*.cpp' -a -not -name '*.h' -a -not -name '.' -not -path './.git/*' -delete
+find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -path './.git/*' -a -type f -not -name 'Makefile' -delete
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
@@ -77,5 +75,6 @@ echo "Building markdown file"
 
 ./markdown_issue_builder issues-"$path".json "$commit_hash"
 
+echo "Markdown file saved in" issues-"$path".md
 
 
