@@ -3,7 +3,7 @@
 
 ```shell
 git clone git@github.com:eldipa/fefobot.git
-chmox u+x markdown_issue_builder
+chmod u+x markdown_issue_builder
 pip install -r requirements.txt
 ./fefobot.sh <username> <exercise> <course>
 ```
