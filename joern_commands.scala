@@ -34,7 +34,7 @@ val printing2 = cpg.fieldAccess.code("std.*::.*cout").repeat(_.astParent)(_.unti
 val printing = (printing1 ++ printing2).l;
 
 // malloc, realloc, calloc
-val xallocCCalls = cpg.call.name("malloc|realloc|calloc").method.l;
+val xallocCCalls = cpg.call.name("malloc|realloc|calloc|free").method.l;
 
 // "protocol"-like functions
 val protocolFunctionNames = cpg.call.name("hton[sl]|ntoh[sl]").method.l;
