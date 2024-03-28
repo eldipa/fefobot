@@ -61,14 +61,21 @@ fi
 echo "Running Joern"
 
 cd "$path"
+commit_hash=$(git rev-parse HEAD)
 # delete any non source code file recursively
-find . -type f -not -name '*.cpp' -a -not -name '*.h' -a -not -name '.' -delete
+find . -type f -not -name '*.cpp' -a -not -name '*.h' -a -not -name '.' -not -path './.git/*' -delete
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
-joern --nocolors < ../joern_commands.scala > /dev/null 2> /dev/null
+joern --nocolors < ../joern_commands.scala > /dev/null
 
 mv issues-"$path".json ..
 cd ..
 
 echo "Output queries saved in" issues-"$path".json
+echo "Building markdown file"
+
+./markdown_issue_builder issues-"$path".json "$commit_hash"
+
+
+

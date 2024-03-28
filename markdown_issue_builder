@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+import sys
+
+import json
+from jinja2 import Template
+
+# repo - last_commit_hash - filename - line_start - line_end
+github_permalink_template = "https://github.com/Taller-de-Programacion-TPs/{}/blob/{}/{}#L{}-L{}"
+
+issue_template = Template("""
+# {{ issue_title }}
+
+{% for permalink in permalinks %}
+{{ permalink }}
+{% endfor %}
+""")
+
+
+# configure according to your taste
+issue_to_title_mapper = {
+    "del": "Uso de `delete`",
+    "nested_loops": "Nested Loops",
+    "raw_pointers": "Uso de punteros crudos",
+    "long_strings": "Strings largos",
+    "print": "Prints",
+    "copies": "Pasaje por valor/copia",
+    "protocol_functions": "Funciones de 'protocolo'",
+    "buffer": "Uso de buffers",
+    "new": "Uso de `new`",
+    "long_functions": "Funciones largas",
+    "outside_class": "Funciones por fuera de una clase (static/globals)",
+    "x_alloc": "Uso de `malloc`/`calloc`/`realloc`/`free`",
+}
+
+
+def read_issues(filename):
+    with open(filename, 'r') as f:
+        return json.load(f)
+
+
+def issue_to_issue_template(issue):
+    issue_title, occurrences = issue.popitem()
+    permalinks = []
+    if not occurrences:
+        return ''
+    for occurrence in occurrences:
+        permalinks.append(github_permalink_template.format(
+            'threads-2023c2-franjuarez',
+            last_commit_hash,
+            occurrence['filename'],
+            occurrence['lineNumberStart'],
+            occurrence.get('lineNumberEnd', occurrence['lineNumberStart']),
+        ))
+    return issue_template.render({
+        'issue_title': issue_to_title_mapper.get(issue_title, issue_title),
+        'permalinks': permalinks
+    })
+
+
+def dump_markdown(issues_filename, blob):
+    with open(f"{issues_filename}.md", 'w') as f:
+        f.write(blob)
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <issue_file_path> <last_commit_hash>", file=sys.stderr)
+        exit(1)
+    issue_file = sys.argv[1]
+    last_commit_hash = sys.argv[2]
+
+    # read args
+    # issue file, last commit hash
+    issues = read_issues(issue_file)
+    dump_markdown(
+        issues_filename=issue_file.strip('.json'),
+        blob=''.join(map(issue_to_issue_template, issues))
+    )
