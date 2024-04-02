@@ -2,11 +2,14 @@
 ## Instructions
 
 ### Prerequisites.
-Joern [installed and available in PATH](https://docs.joern.io/installation/).
+- Python 3
+- pip
+- Joern [installed and available in PATH](https://docs.joern.io/installation/).
 
 ### Getting and using Fefobot
 ```shell
 git clone git@github.com:eldipa/fefobot.git
+cd fefobot
 chmod u+x markdown_issue_builder
 pip install -r requirements.txt
 ./fefobot.sh <username> <exercise> <course>
