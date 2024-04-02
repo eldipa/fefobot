@@ -15,7 +15,6 @@ issue_template = Template("""
 {% endfor %}
 """)
 
-
 # configure according to your taste
 issue_to_title_mapper = {
     "del": "Uso de `delete`",
@@ -45,7 +44,7 @@ def issue_to_issue_template(issue):
         return ''
     for occurrence in occurrences:
         permalinks.append(github_permalink_template.format(
-            'threads-2023c2-franjuarez',
+            repo_name,
             last_commit_hash,
             occurrence['filename'],
             occurrence['lineNumberStart'],
@@ -68,6 +67,7 @@ if __name__ == '__main__':
         exit(1)
     issue_file = sys.argv[1]
     last_commit_hash = sys.argv[2]
+    repo_name = issue_file.strip('issues-').strip('.json')
 
     # read args
     # issue file, last commit hash
