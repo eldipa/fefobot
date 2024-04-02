@@ -43,15 +43,26 @@ clone() {
     gh repo clone "Taller-de-Programacion-TPs/$1"
 }
 
+save_head() {
+    cd "$path"
+    commit_hash=$(git rev-parse HEAD)
+    cd ..
+    echo "$commit_hash" > "$path/REPO_HEAD.h"
+}
+
 if [ -d "$path" ]; then
     if [ $force_clone -eq 1 ]; then
+        echo "Removing $path"
         rm -rI "$path"
         clone "$path"
+        save_head
     else
         echo "$path exists, will not clone"
+        commit_hash=$(cat "$path/REPO_HEAD.h")
     fi
 else
     clone "$path"
+    save_head
 fi
 
 # this part is a little bit hackish, but it seems to be working ok
@@ -59,22 +70,21 @@ fi
 echo "Running Joern"
 
 cd "$path"
-commit_hash=$(git rev-parse HEAD)
 # delete any non source code file recursively
-find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -path './.git/*' -a -type f -not -name 'Makefile' -delete
+find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -name 'Makefile' -delete
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
 joern --nocolors < ../joern_commands.scala > /dev/null
 
-mv issues-"$path".json ..
+mv "issues-$path.json" ..
 cd ..
 
-echo "Output queries saved in" issues-"$path".json
+echo "Output queries saved in" "issues-$path.json"
 echo "Building markdown file"
 
-./markdown_issue_builder issues-"$path".json "$commit_hash"
+./markdown_issue_builder "issues-$path.json" "$commit_hash"
 
-echo "Markdown file saved in" issues-"$path".md
+echo "Markdown file saved in" "issues-$path.md"
 
 
