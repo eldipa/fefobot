@@ -67,12 +67,14 @@ if __name__ == '__main__':
         exit(1)
     issue_file = sys.argv[1]
     last_commit_hash = sys.argv[2]
-    repo_name = issue_file.strip('issues-').strip('.json')
+    print(issue_file)
+    repo_name = issue_file.replace("issues-", "").replace(".json", "")
+    print(repo_name)
 
     # read args
     # issue file, last commit hash
     issues = read_issues(issue_file)
     dump_markdown(
-        issues_filename=issue_file.strip('.json'),
+        issues_filename=issue_file.replace(".json", ""),
         blob=''.join(map(issue_to_issue_template, issues))
     )
