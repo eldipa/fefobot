@@ -75,7 +75,7 @@ find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -n
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
-joern --nocolors < ../joern_commands.scala > /dev/null
+TERM=dumb /home/user/bin2/joern/joern-cli/joern --nocolors < ../joern_commands.scala > /dev/null
 
 mv "issues-$path.json" ..
 cd ..
