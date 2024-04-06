@@ -4,7 +4,7 @@
 ### Prerequisites.
 - Python 3
 - pip
-- Joern [installed and available in PATH](https://docs.joern.io/installation/).
+- Joern [installed and available in PATH](https://docs.joern.io/installation/). Use version `v2.0.321`
 
 ### Getting and using Fefobot
 ```shell
@@ -17,10 +17,15 @@ pip install -r requirements.txt
 
 Username is the username of the student, exercise is one of (sockets, threads) and course
 is 202xcx (example: 2024c1).
+
+Example: `./fefobot.sh student-github-user sockets 2024c1`
+
 You may use the -f/--force-clone flag if you wish to remove the student repo and start clean.
 
 This will generate an .md file with the issues found on the repo, named `issues-{exercise}-{course}-{username}.md`
 
+
+# Old Doc (don't follow unless you know what you're doing)
 
 ## Queries
 
