@@ -1,3 +1,28 @@
+# Fefobot
+## Instructions
+
+### Prerequisites.
+- Python 3
+- pip
+- Joern [installed and available in PATH](https://docs.joern.io/installation/).
+
+### Getting and using Fefobot
+```shell
+git clone git@github.com:eldipa/fefobot.git
+cd fefobot
+chmod u+x markdown_issue_builder
+pip install -r requirements.txt
+./fefobot.sh <username> <exercise> <course>
+```
+
+Username is the username of the student, exercise is one of (sockets, threads) and course
+is 202xcx (example: 2024c1).
+You may use the -f/--force-clone flag if you wish to remove the student repo and start clean.
+
+This will generate an .md file with the issues found on the repo, named `issues-{exercise}-{course}-{username}.md`
+
+
+## Queries
 
 Fetch all the repositories for the given exercise+course
 
