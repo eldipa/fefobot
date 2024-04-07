@@ -66,15 +66,18 @@ else
 fi
 
 # this part is a little bit hackish, but it seems to be working ok
-
-echo "Running Joern"
+echo "Adapting source code before running joern"
+chmod u+x inject_source_code.sh
 
 cd "$path"
 # delete any non source code file recursively
 find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -name 'Makefile' -delete
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
+# inject some code into each source code
+find . -type f \( -name '*.cpp' -o -name '*.h' \) -a -not -name REPO_HEAD.h -exec ../inject_source_code.sh {} \;
 
+echo "Running Joern"
 TERM=dumb /home/user/bin2/joern/joern-cli/joern --nocolors < ../joern_commands.scala > /dev/null
 
 mv "issues-$path.json" ..
