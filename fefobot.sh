@@ -75,10 +75,10 @@ find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -n
 # delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 # inject some code into each source code
-find . -type f \( -name '*.cpp' -o -name '*.h' \) -a -not -name REPO_HEAD.h -exec ../inject_source_code.sh {} \;
+find . -type f \( -name '*.cpp' -o -name '*.h' \) -a -not -name REPO_HEAD.h -exec ../inject_source_code.sh {} ../injection \;
 
 echo "Running Joern"
-TERM=dumb /home/user/bin2/joern/joern-cli/joern --nocolors < ../joern_commands.scala > /dev/null
+sourceCodeOffset="$(wc -l ../injection | awk '{print $1}')" TERM=dumb /home/user/bin2/joern/joern-cli/joern --nocolors < ../joern_commands.scala
 
 mv "issues-$path.json" ..
 cd ..
