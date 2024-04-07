@@ -1,23 +1,19 @@
 #!/bin/bash
 
-if [ "$#" != 1 ]; then
+if [ "$#" != 2 ]; then
     exit 1
 fi
 
-if [ ! -f "$1" ]; then
+if [ ! -f "$1" -o ! -f "$2" ]; then
     exit 2
 fi
 
 target=$1
+injectionfile=$2
 
 if grep -q 'FEFOBOT - INJECTION' "$target" ; then
     echo ""
 else
-    cat - "$target" > .injected_fefobot_tmp_file <<EOF
-/* FEFOBOT - INJECTION */
-#define try          if(true)
-#define catch(...)   if(false)
-EOF
-
+    cat "$injectionfile" "$target" > .injected_fefobot_tmp_file
     mv .injected_fefobot_tmp_file "$target"
 fi
