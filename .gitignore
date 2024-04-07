@@ -1,1 +1,5 @@
 *.wiki
+issues-sockets-*
+issues-threads-*
+sockets-20*
+threads-20*
