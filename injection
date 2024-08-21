@@ -1,0 +1,4 @@
+/* FEFOBOT - INJECTION */
+#define try          if(true)
+#define catch(...)   if(false)
+

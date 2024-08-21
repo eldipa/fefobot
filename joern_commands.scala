@@ -4,25 +4,31 @@ import java.nio.charset.StandardCharsets
 val projectName = System.getProperty("user.dir").split("/").last
 importCode(inputPath = ".", projectName = projectName)
 
+// The fefobot.sh should had injected some lines of code at the begin of each file (.cpp and .h)
+// This additional lines are only for us and not visible by the student nor github so when joern computes
+// the lines of each method, we need to substract N from the line numbers as if those injected lines
+// never existed.
+// This N comes from outside in the sourceCodeOffset environment variable
+val sourceCodeOffset = System.getenv().getOrDefault("sourceCodeOffset", "0").toInt
 
 // mapping helpers
 // these convert the Ast objects to an Issue object that keeps the information we want to show
 case class Issue(filename: String, lineNumberStart: Option[Integer], lineNumberEnd: Option[Integer], code: Option[String])
 def methodToIssue(ast: io.shiftleft.codepropertygraph.generated.nodes.AstNode): Issue = {
   val method = ast.asInstanceOf[Method]
-  Issue(method.filename.toString, method.lineNumber, method.lineNumberEnd, None)
+  Issue(method.filename.toString, method.lineNumber.map(_ - sourceCodeOffset), method.lineNumberEnd.map(_ - sourceCodeOffset), None)
 }
 
 def literalToIssue(literal: io.shiftleft.codepropertygraph.generated.nodes.Literal): Issue = {
-  Issue(literal.file.toArray.map(f => f.name).head, literal.lineNumber, None, Some(literal.code))
+  Issue(literal.file.toArray.map(f => f.name).head, literal.lineNumber.map(_ - sourceCodeOffset), None, Some(literal.code))
 }
 
 def paramToIssue(param: io.shiftleft.codepropertygraph.generated.nodes.MethodParameterIn): Issue = {
-  Issue(param.file.toArray.map(f => f.name).head, param.lineNumber, None, None)
+  Issue(param.file.toArray.map(f => f.name).head, param.lineNumber.map(_ - sourceCodeOffset), None, None)
 }
 
 def functionCallToIssue(call: io.shiftleft.codepropertygraph.generated.nodes.Call): Issue = {
-  Issue(call.file.toArray.map(f => f.name).head, call.lineNumber, None, None)
+  Issue(call.file.toArray.map(f => f.name).head, call.lineNumber.map(_ - sourceCodeOffset), None, None)
 }
 
 // Queries
