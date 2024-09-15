@@ -78,27 +78,48 @@ if [ -d "$path" ]; then
         save_head
     else
         echo "$path exists, will not clone"
-        commit_hash=$(cat "$path/REPO_HEAD.h")
+        commit_hash=$(cat "$path/REPO_HEAD.fefobot")
     fi
 else
     clone "$path"
     save_head
 fi
 
-# this part is a little bit hackish, but it seems to be working ok
+# This part is a little bit hackish, but it seems to be working ok
 echo "Adapting source code before running joern"
-chmod u+x inject_source_code.sh
 
 cd "$path"
-# delete any non source code file recursively
-find . -type f -not -name '*.cpp' -a -type f -not -name '*.h' -a -type f -not -name 'Makefile' -delete
-# delete directories that may have emptied after deleting files
+
+# Delete any non source code file recursively
+find . -type f -a \( -not -name '*.cpp' -a -not -name '*.h' -a -not -name '*.fefobot' \) -delete
+
+# Delete any file provided by the course
+rm $(grep -Rl --include '*.cpp' 'empieza la magia arcana proveniente de C') 2>/dev/null || true # liberror.cpp
+rm $(grep -Rl --include '*.cpp' 'obtenida tenemos que ver cual es realmente funcional') 2>/dev/null || true # socket.cpp
+rm $(grep -Rl --include '*.cpp' 'ResolverError::ResolverError.*int.*gai_errno.*') 2>/dev/null || true # resolvererror.cpp
+rm $(grep -Rl --include '*.cpp' 'Para pre-seleccionar que direcciones nos interesan le pasamos') 2>/dev/null || true # resolver.cpp
+
+rm $(grep -Rl --include '*.h' 'Dado que `errno` es una variable global y puede ser modificada por') 2>/dev/null || true # liberror.h
+rm $(grep -Rl --include '*.h' 'Muchas librer.as de muchos lenguajes ofrecen una .nica formal de inicializar') 2>/dev/null || true # socket.h
+rm $(grep -Rl --include '*.h' 'Clase que encapsula un "gai" error. Vease getaddrinfo') 2>/dev/null || true # resolvererror.h
+rm $(grep -Rl --include '*.h' 'Si `is_passive` es `true` y `hostname` es `nullptr`,') 2>/dev/null || true # resolver.h
+
+rm $(grep -Rl --include '*.h' 'Multiproducer/Multiconsumer Blocking Queue .MPMC.') 2>/dev/null || true # queue.h
+rm $(grep -Rl --include '*.h' 'flags, mostly to control how Thread::run.. will behave') 2>/dev/null || true # thread.h
+
+# Delete directories that may have emptied after deleting files
 find . -type d -empty -delete
+
+
 # inject some code into each source code
-find . -type f \( -name '*.cpp' -o -name '*.h' \) -a -not -name REPO_HEAD.h -exec ../inject_source_code.sh {} ../injection \;
+# this is needed to workaround some bugs of joern
+find . -type f \( -name '*.cpp' -o -name '*.h' \) -a -not -name REPO_HEAD.fefobot -exec "$SCRIPT_DIR/inject_source_code.sh" {} "$SCRIPT_DIR/injection" \;
 
 echo "Running Joern"
-sourceCodeOffset="$(wc -l ../injection | awk '{print $1}')" TERM=dumb /home/user/bin2/joern/joern-cli/joern --nocolors < ../joern_commands.scala
+# The sourceCodeOffset allows us to tell joern that the source line numbers should be offset by this amount
+# Because in the step above we injected code, this made the code to have an offset that the original code
+# does not have so we need to compensate it.
+sourceCodeOffset="$(wc -l "$SCRIPT_DIR/injection" | awk '{print $1}')" TERM=dumb /home/user/bin/joern/joern-cli/joern --nocolors < "$SCRIPT_DIR/joern_commands.scala"
 
 mv "issues-$path.json" ..
 cd ..
