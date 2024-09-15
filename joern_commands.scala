@@ -32,48 +32,125 @@ def functionCallToIssue(call: io.shiftleft.codepropertygraph.generated.nodes.Cal
 }
 
 // Queries
+//
+// Convention:
+//  - the name of queries that not represent issues in the code are prefixed with underscore
+//    (eg _coutCalls are Calls to cout, it is not a real issue but an auxiliar query)
+//  - *always* call .l, .toList or .toSet. Joern returns Traversable objects (like Iterators) that
+//    once you iterate over, you cannot do it again (they get exhausted) an nobody will warn you!
+//  - if you want to keep dealing with Traversable|Iterators, postfix with Iter
+//  - if you are dealing with Sets, no additional postfixed is assumed (_coutCalls is a Set of Calls)
+//    but if you are working with List or Seq, add that to the name (_coutCallsList is a List of Calls)
 
-// print stuff
-val printing1 = cpg.identifier.name("cout").repeat(_.astParent)(_.until(_.isMethod)).toSet;
-val printing2 = cpg.fieldAccess.code("std.*::.*cout").repeat(_.astParent)(_.until(_.isMethod)).toSet;
 
-val printing = (printing1 ++ printing2).l;
+// Detect [std::]cout calls used for logic and not error printing ----------------------------
+//
+// The cout or std::cout calls
+val _coutCalls = (cpg.call.code("cout[ <].*").toSet | cpg.call.code("std[ ]*::[ ]*cout[ <].*").toSet);
 
-// malloc, realloc, calloc
-val xallocCCalls = cpg.call.name("malloc|realloc|calloc|free").method.l;
+// From each cout call search for the first inner "if" control structure that is of the form "if (fefobotCatch())"
+// These "if" are actually the "catch" statement that were patched by fefobot.sh
+// We want to *ignore* these cout calls because they are likely to be error printing so we issue codeNot(...)
+// and from there we get the inner method
+// Note: when dealing with ast[Parent|is*] methods we are dealing with AstNode objects. From there
+// we need to go back to Methods, Calls and those objects with
+//   <astIterable>.collect(astNode => astNode.asInstanceOf[Method])
+val _nonErrorCoutInMethods = _coutCalls.repeat(_.astParent)(_.until(_.isControlStructure)).codeNot(raw"if \(fefobotCatch\(\)\)").repeat(_.astParent)(_.until(_.isMethod)).collect(astNode => astNode.asInstanceOf[Method]).toSet;
 
-// "protocol"-like functions
-val protocolFunctionNames = cpg.call.name("hton[sl]|ntoh[sl]").method.l;
+// Detect [std::]cin or [std::]getline calls
+val _cinInMethods = (cpg.call.code("cin[ >].*").toSet | cpg.call.code("std[ ]*::[ ]*cin[ >].*").toSet).method.toSet;
+val _getlineInMethods = (cpg.call.code(raw"getline[ ]*\(.*").toSet | cpg.call.code(raw"std[ ]*::[ ]*getline[ ]*\(.*").toSet).method.toSet;
+
+// Any method that we belive contains logic of the app
+val _appLogicMethods = (_nonErrorCoutInMethods | _cinInMethods | _getlineInMethods);
+
+// Detect socket/protocol-like calls
+val _protocolMethods = cpg.call.name("hton[sl]|ntoh[sl]").method.toSet;
+val _socketMethods = cpg.call.name("sendall|sendsome|recvall|recvall").method.toSet;
+val _rawSocketMethods = cpg.call.name("send|recv").method.toSet;
+
+// Any method that we belive contains protocol/socket logic
+val _protocolSocketLogicMethods = (_protocolMethods | _socketMethods | _rawSocketMethods);
+
+// Detect the filenames where there are methods that mix logic with the protocol
+// The mix may not happen within the same method but in two different methods of the same file
+val _mixingLogicFilenames = (_appLogicMethods.filename.toSet & _protocolSocketLogicMethods.filename.toSet);
+
+// Now filter the methods that call cout/cin/... and the ones that do protocol/socket stuff.
+// A single method may not do both but it will belong to a filename that has both.
+// The hypothesis is that if even 2 methods are in the same filename, they belong to the same "unit" (or class)
+// and they should not be mixing logic and protocol/socket.
+val _appOrProtocolSocketLogicMethods = (_appLogicMethods | _protocolSocketLogicMethods);
+val _mixingLogicMethods = _appOrProtocolSocketLogicMethods.filter(meth => _mixingLogicFilenames.contains(meth.filename)).toSet
+
+
+// Very-likely incorrect use of raw send/recv functions
+val maybeMisuseSendRecvMethods = _rawSocketMethods;
+
+// Check printf scanf  str[n]?cmp str[n]?cpy memcmp
+val cFuncCallMethods = cpg.call.name("str[n]?cmp|str[n]cpy|memcmp|printf|scanf").method.toSet;
+
+// Calls to malloc, realloc, calloc
+val xallocCallMethods = cpg.call.name("malloc|realloc|calloc|free").method.toSet;
+
+// "Local" is a bad name but it is how Joern calls any variable, being local or not.
+// In this case we search all the locals where from each local we have a method with the special
+// name "<global>" which, obviosly means the locals not locals!
+val globalVarsLocals = cpg.local.where(locals => locals.method.name(raw"\<global\>")).toSet;
+
 
 // new/delete func calls
 val newOp = cpg.call.name("<operator>.new").repeat(_.astParent)(_.until(_.isMethod)).l;
 val delOp = cpg.call.name("<operator>.delete").repeat(_.astParent)(_.until(_.isMethod)).l;
 
-// pointers
-val byPtr = cpg.parameter.typeFullName(".*\\*.*").toSet;
-val nativePtr = cpg.parameter.typeFullName("(bool|char|void)(\\[\\])?\\*.*").toSet;
-val ptrs = (byPtr -- nativePtr).l;
+// Pass by pointer. For primitive types like char or void, it is ok, for the rest
+// it may indicate an incorrect use of pointers
+// This is going to have false positives when we deal with polymorphism
+val _passByPtrParameters = cpg.parameter.typeFullName(raw".*\*.*").toSet;
+val _passNativeByParamenters = cpg.parameter.typeFullName(raw"(bool|char|void)(\[\])?\*.*").toSet;
+val maybeUnneededPassByPtrParameters = (_passByPtrParameters -- _passNativeByParamenters);
+
+// Pass by value non-trivially copiable (and potentially large) object like vector, string, map and list of any type
+val _passByValueParameters = cpg.method.parameter.code(raw".*(:|\s|^)(vector|string|map|list)[^a-zA-Z0-9_].*").code("^[^&]*$").toSet;
+
 
 // long strings
 val longStrings = cpg.literal.typeFullName("char\\[\\d\\d+\\]").l;
 
-// pass by value (vector, string, map, list of any type)
-val passByValue = cpg.method.parameter.where(_.code(".*(:|\\s|^)(vector|string|map|list)[^a-zA-Z0-9_].*")).where(_.code("^[^&]*$")).repeat(_.astParent)(_.until(_.isMethod)).l;
+// Functions defined outside a class identifier (maybe static or global)
+//
+// The _.signature(raw".*\..*") matches signature of the form Class.Method,
+// the _.signature(raw".* main\s*\(.*") matches the 'main()' functions
+// and the _.code("(<empty>|<global>)") are functions or methods with no source code
+// which are likely to be from the system/OS/stdlib
+//
+// None of those represents student's real static/global functions so we search
+// for any method that does not match any of those.
+val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".* main\s*\(.*").codeNot("(<empty>|<global>)")).toSet
 
-// functions defined outside a class identifier (maybe static or global)
-val outsideClassFunctions = cpg.method.whereNot(_.signature(".*\\..*")).whereNot(_.signature(".* main\\s*\\(.*")).whereNot(_.code("(<empty>|<global>)")).l;
 
-// buffer allocs
-val bufferDefinitions = cpg.local.typeFullName(".*\\[.*").repeat(_.astParent)(_.until(_.isMethod)).l;
+// Local/Stack buffer allocations -------------------------------------------------------------------------
+//
+// The following catches buffers of all sizes except 2 and 3. We expect to see
+// buffers of 2 or 3 elements but nor more or less.
+// Things like char[1] or char[64] is likely to be incorrect.
+// NOTE: querying over typeFullName is more robust because it pre-process the string
+// removing syntactic-valid-but-regex-annyoing whitespace
+// NOTE: typeFullName also resolves the 'defines' so if we have 'char buf[SIZE]', typeFullName should
+// be 'char[64]' given  '#define SIZE 64'. NICE!
+val stackBufferAllocatedMethods = cpg.local.typeFullName(raw".*\[[ ]*\d+[ ]*\].*").typeFullNameNot(raw".*\[[ ]*[23][ ]*\].*").method.toSet;
 
-// long functions (more than 50 lines)
+
+// -------------------------------------------------------------------------
+
+// Long functions (more than 35 lines)
 val longFunctions = ({
-  cpg.method.internal.filter(_.numberOfLines > 50).nameNot("<global>")
-}).l;
+  cpg.method.internal.filter(_.numberOfLines > 35).nameNot("<global>")
+}).toSet;
 
-// nested loops
 
-val nestedLoops = ({
+// Methods with nested loops
+val nestedLoopsMethods = ({
   cpg.method.internal
     .filter(
       _.ast.isControlStructure
@@ -81,7 +158,7 @@ val nestedLoops = ({
         .size > 3
     )
     .nameNot("<global>")
-}).l;
+}).toSet;
 
 
 
