@@ -110,16 +110,21 @@ rm $(grep -Rl --include '*.h' 'flags, mostly to control how Thread::run.. will b
 # Delete directories that may have emptied after deleting files
 find . -type d -empty -delete
 
+# Rename any .h (header file) to .cpp because Joern does not seem to be reading them!
+# The new .h.cpp compounded extension will be have to be postprocessed by the markdown_issue_builder
+find . -type f -a -name '*.h' -exec mv {} {}.cpp \;
 
-# inject some code into each source code
-# this is needed to workaround some bugs of joern
-find . -type f \( -name '*.cpp' -o -name '*.h' \) -a -not -name REPO_HEAD.fefobot -exec "$SCRIPT_DIR/inject_source_code.sh" {} "$SCRIPT_DIR/injection" \;
+# Inject some code into each source code
+# this is needed to workaround some bugs of Joern
+find . -type f -name '*.cpp' -exec "$SCRIPT_DIR/inject_source_code.sh" {} "$SCRIPT_DIR/injection" \;
 
-echo "Running Joern"
-# The sourceCodeOffset allows us to tell joern that the source line numbers should be offset by this amount
+# The sourceCodeOffset allows us to tell Joern that the source line numbers should be offset by this amount
 # Because in the step above we injected code, this made the code to have an offset that the original code
 # does not have so we need to compensate it.
-sourceCodeOffset="$(wc -l "$SCRIPT_DIR/injection" | awk '{print $1}')" TERM=dumb /home/user/bin/joern/joern-cli/joern --nocolors < "$SCRIPT_DIR/joern_commands.scala"
+sourceCodeOffset="$(wc -l "$SCRIPT_DIR/injection" | awk '{print $1}')"
+
+echo "Running Joern"
+sourceCodeOffset=$sourceCodeOffset TERM=dumb /home/user/bin/joern/joern-cli/joern --nocolors < "$SCRIPT_DIR/joern_commands.scala"
 
 mv "issues-$path.json" ..
 cd ..
