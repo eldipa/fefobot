@@ -86,7 +86,7 @@ else
 fi
 
 # This part is a little bit hackish, but it seems to be working ok
-echo "Adapting source code before running joern"
+echo "Adapting source code before running Joern"
 
 cd "$path"
 
@@ -94,6 +94,8 @@ cd "$path"
 find . -type f -a \( -not -name '*.cpp' -a -not -name '*.h' -a -not -name '*.fefobot' \) -delete
 
 # Delete any file provided by the course
+rm $(grep -Rl --include '*.cpp' 'ssize_t __real_send.int sockfd,') 2>/dev/null || true # common_wrap_socket.cpp
+
 rm $(grep -Rl --include '*.cpp' 'empieza la magia arcana proveniente de C') 2>/dev/null || true # liberror.cpp
 rm $(grep -Rl --include '*.cpp' 'obtenida tenemos que ver cual es realmente funcional') 2>/dev/null || true # socket.cpp
 rm $(grep -Rl --include '*.cpp' 'ResolverError::ResolverError.*int.*gai_errno.*') 2>/dev/null || true # resolvererror.cpp
