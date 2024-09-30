@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys
 
-import json
+import json, collections
 from jinja2 import Template
 
 # repo - last_commit_hash - filename - line_start - line_end
@@ -15,66 +15,333 @@ issue_template = Template("""
 {% endfor %}
 """)
 
-# configure according to your taste
-issue_to_title_mapper = {
-    "del": "Uso de `delete`",
-    "nested_loops": "Nested Loops",
-    "raw_pointers": "Uso de punteros crudos",
-    "long_strings": "Strings largos",
-    "print": "Prints",
-    "copies": "Pasaje por valor/copia",
-    "protocol_functions": "Funciones de 'protocolo'",
-    "buffer": "Uso de buffers",
-    "new": "Uso de `new`",
-    "long_functions": "Funciones largas",
-    "outside_class": "Funciones por fuera de una clase (static/globals)",
-    "x_alloc": "Uso de `malloc`/`calloc`/`realloc`/`free`",
-}
-
 
 def read_issues(filename):
     with open(filename, 'r') as f:
-        return json.load(f)
+        main_dict = json.load(f)
+        for k in list(main_dict.keys()):
+            if main_dict[k].startswith("ERROR:"):
+                print(f"!!! Error found from Joern for the issue type '{k}': {main_dict[k]}")
+                del main_dict[k]
+            else:
+                # values are json themselves
+                main_dict[k] = json.loads(main_dict[k])
+
+        return main_dict
+
+class MarkdownIssueFormatter:
+    def __init__(self, repo_name, last_commit_hash, src_lineno_offset):
+        self.repo_name = repo_name
+        self.last_commit_hash = last_commit_hash
+        self.src_lineno_offset = src_lineno_offset
+
+        self.out_chunks = []
+
+    def format_issue(self, issue_code_name, occurrences):
+        method = getattr(self, f'format_{issue_code_name}', None)
+        if method == None:
+            raise Exception(f"Issue code name '{issue_code_name}' has no a format method associated.")
+
+        if occurrences:
+            method(occurrences)
 
 
-def issue_to_issue_template(issue):
-    issue_title, occurrences = issue.popitem()
-    permalinks = []
-    if not occurrences:
-        return ''
-    for occurrence in occurrences:
-        permalinks.append(github_permalink_template.format(
-            repo_name,
-            last_commit_hash,
-            occurrence['filename'],
-            occurrence['lineNumberStart'],
-            occurrence.get('lineNumberEnd', occurrence['lineNumberStart']),
+    def format_mixingLogic(self, occurrences):
+        self.write_title("Mezcla lógica del juego (app) con protocolo")
+        self.write_desc("El código q tiene lógica del juego debe de estar separado del código del protocolo/sockets en clases distintas.")
+
+        mix_within_single_method_occurences = []
+        app_logic_occurrence_by_filename = collections.defaultdict(list)
+        protocol_logic_occurrence_by_filename = collections.defaultdict(list)
+        for occurrence in occurrences:
+            if occurrence['hasAppLogic'] and occurrence['hasProtocolSocketLogic']:
+                mix_within_single_method_occurences.append(occurrence)
+            else:
+                assert occurrence['hasAppLogic'] or occurrence['hasProtocolSocketLogic']
+                filename = self.filename_of(occurrence)
+                if occurrence['hasAppLogic']:
+                    app_logic_occurrence_by_filename[filename].append(occurrence)
+                else:
+                    protocol_logic_occurrence_by_filename[filename].append(occurrence)
+
+        for occurrence in mix_within_single_method_occurences:
+            filename = self.filename_of(occurrence)
+
+            # Show only the line that contains the bogus parameter
+            lineno_start, lineno_end = self.range_lineno_of(occurrence['method'])
+            self.write_permalink(filename, lineno_start, lineno_end)
+
+        for filename in app_logic_occurrence_by_filename.keys():
+            for occurrence in app_logic_occurrence_by_filename[filename]:
+                lineno_start, lineno_end = self.range_lineno_of(occurrence['method'])
+                self.write_permalink(filename, lineno_start, lineno_end)
+
+            for occurrence in protocol_logic_occurrence_by_filename[filename]:
+                lineno_start, lineno_end = self.range_lineno_of(occurrence['method'])
+                self.write_permalink(filename, lineno_start, lineno_end)
+
+            # format just one
+            break
+
+        # TODO pick_up_to (chosing different files)
+
+    def format_maybeMisuseSendRecv(self, occurrences):
+        self._format_issue(
+                "Uso de send/recv",
+                "No es que usar `send`/`recv` este mal, solo estate atento ha estar codeando los loops correctamente.",
+                True,
+                occurrences,
+                4,
+                'parameter',
+                single_line=True
+                )
+
+    def format_cFuncCalls(self, occurrences):
+        self._format_issue(
+                "Uso de funciones de C",
+                "No deberías estar necesitando usar funciones de C, la lib estandar de C++ es mucho más rica.",
+                True,
+                occurrences,
+                4,
+                'call',
+                single_line=True
+                )
+
+
+    def format_cAllocCalls(self, occurrences):
+        self._format_issue(
+                "Manejo de memoria a la C",
+                "No uses estas funciones de C, en cambio usa los objetos RAII de C++ (como `std::vector`) o, en última instancia, los operadores `new` y `delete`.",
+                True,
+                occurrences,
+                4,
+                'call',
+                single_line=True
+                )
+
+    def format_possibleEndiannessHandlingByHandCalls(self, occurrences):
+        self._format_issue(
+                "Manejo del endianness a mano",
+                "Podes usar las funciones para el endianness mostradas en clase, no hace falta el manejo de bytes a mano.",
+                True,
+                occurrences,
+                4,
+                'call',
+                single_line=True
+                )
+
+
+    def format_libErrorThrowCalls(self, occurrences):
+        self._format_issue(
+                "Excepcion incorrecta",
+                "`LibError` es para errores del sistema o de la stdlib q tenga un `errno` valido. Posiblemente quieras usar otro tipo de excepcion como `std::runtime_error`.",
+                True,
+                occurrences,
+                2,
+                'call',
+                single_line=True
+                )
+
+    def format_globalVariables(self, occurrences):
+        self._format_issue(
+                "Variables globales",
+                "No deberías necesitar usar variables globales.",
+                True,
+                occurrences,
+                4,
+                'local',
+                single_line=True
+                )
+
+    def format_maybeUnneededPassByPtr(self, occurrences):
+        self._format_issue(
+                "Pasaje por puntero",
+                "Estas pasando por puntero pero posiblemente podrías pasar por referencia usando `&`",
+                True,
+                occurrences,
+                8,
+                'parameter',
+                single_line=True
+                )
+
+
+    def format_passByValueNonTrivialObjects(self, occurrences):
+        self._format_issue(
+                "Pasaje por copia",
+                "Estas pasando por copia lo q es ineficiente: pasar por move semantics o por referencia usando `&`",
+                True,
+                occurrences,
+                8,
+                'parameter',
+                single_line=True
+                )
+
+    def format_globalFunctions(self, occurrences):
+        self._format_issue(
+                "Funciones globales",
+                "Funciones globales no están permitidas, encapsular la lógica en clases.",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
+
+    def format_stackBufferAllocated(self, occurrences):
+        self._format_issue(
+                "Buffers",
+                "No deberias necesitar de usar buffers.",
+                True,
+                occurrences,
+                4,
+                'local',
+                single_line=True
+                )
+
+    def format_vectorBufferAllocated(self, occurrences):
+        self._format_issue(
+                "Buffers",
+                "No deberias necesitar de usar buffers.",
+                True,
+                occurrences,
+                4,
+                'call',
+                single_line=True
+                )
+
+
+
+    def format_longMethods(self, occurrences):
+        self._format_issue(
+                "Métodos muy largos",
+                "Refactorizar, código muy largo es difícil de entender.",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=False
+                )
+
+    def format_tooManyNestedLoopsMethods(self, occurrences):
+        self._format_issue(
+                "Mucha anidación",
+                "Refactorizar, código con muchos `if`/`while`/`for` anidados es difícil de entender.",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=False
+                )
+
+    def format_switchWithoutDefaultMethods(self, occurrences):
+        self._format_issue(
+                "Te falta poner un default",
+                "En los switch, si sabes q hay valores q no deberian aparecer, poner un default que los atrape y lanzar un error",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=False
+                )
+
+    if False:
+        def format_possibleLowLevelProtocolMethods(self, occurrences):
+            self._format_issue(
+                    "Se expone demansiado detalle",
+                    "La interfaz publica de la(s) clases Protocol deben exponer publicamente metodos de alto nivel q hablen en terminos del juego.",
+                    True,
+                    occurrences,
+                    2,
+                    'method',
+                    single_line=False
+                    )
+
+
+    def _format_issue(self, title, desc, hint_more, occurrences, pick_up_cnt, obj_name, single_line):
+        '''
+        Format the issue showing a permalink to the 1 line code.
+        The source code file is taken from occurrences['method']; the line number
+        is taken from occurrences[obj_name].
+        '''
+        assert obj_name in ['method', 'parameter', 'call', 'local']
+        occurrences, more, _ = self.pick_up_to(pick_up_cnt, occurrences)
+
+        self.write_title(title)
+        self.write_desc(desc)
+
+        for occurrence in occurrences:
+            filename = self.filename_of(occurrence)
+
+            if single_line:
+                lineno_start, lineno_end = self.single_lineno_of(occurrence[obj_name])
+            else:
+                lineno_start, lineno_end = self.range_lineno_of(occurrence[obj_name])
+
+            self.write_permalink(filename, lineno_start, lineno_end)
+
+        if more and hint_more:
+            self.write_desc("Puede que haya más casos en tu código.")
+
+    def pick_up_to(self, cnt, occurrences):
+        orig_cnt = len(occurrences)
+        more = orig_cnt > cnt
+        occurrences = occurrences[:cnt]
+
+        return occurrences, more, orig_cnt
+
+    def filename_of(self, occurrence):
+        filename = occurrence['method']['filename']
+        if filename.endswith(".h.cpp"):
+            filename = filename[:-4] # strip ".cpp"
+
+        return filename
+
+    def single_lineno_of(self, obj):
+        return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumber'] - self.src_lineno_offset)
+
+    def range_lineno_of(self, obj):
+        return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumberEnd'] - self.src_lineno_offset)
+
+    def write_title(self, title):
+        self.out_chunks.append(f"### {title}")
+
+    def write_desc(self, desc):
+        self.out_chunks.append(desc)
+
+    def write_permalink(self, filename, start, end):
+        self.out_chunks.append(github_permalink_template.format(
+            self.repo_name,
+            self.last_commit_hash,
+            filename,
+            start,
+            end
         ))
-    return issue_template.render({
-        'issue_title': issue_to_title_mapper.get(issue_title, issue_title),
-        'permalinks': permalinks
-    })
 
+    def close_formating_and_write_file(self, output_filename):
+        with open(f"{output_filename}.md", 'w') as f:
+            for chunk in self.out_chunks:
+                f.write(chunk)
+                f.write("\n")
 
-def dump_markdown(issues_filename, blob):
-    with open(f"{issues_filename}.md", 'w') as f:
-        f.write(blob)
+        self.out_chunks = None # make sure nobody use this again
+
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <issue_file_path> <last_commit_hash>", file=sys.stderr)
+    if len(sys.argv) != 4:
+        print(f"Usage: {sys.argv[0]} <issue_file_path> <last_commit_hash> <src_lineno_offset>", file=sys.stderr)
         exit(1)
     issue_file = sys.argv[1]
     last_commit_hash = sys.argv[2]
+    src_lineno_offset = int(sys.argv[3])
+
     print(issue_file)
     repo_name = issue_file.replace("issues-", "").replace(".json", "")
     print(repo_name)
 
-    # read args
-    # issue file, last commit hash
-    issues = read_issues(issue_file)
-    dump_markdown(
-        issues_filename=issue_file.replace(".json", ""),
-        blob=''.join(map(issue_to_issue_template, issues))
-    )
+    fmt = MarkdownIssueFormatter(repo_name, last_commit_hash, src_lineno_offset)
+    for issue_name, occurrences in read_issues(issue_file).items():
+        fmt.format_issue(issue_name, occurrences)
+
+    fmt.close_formating_and_write_file(issue_file.replace(".json", ""))

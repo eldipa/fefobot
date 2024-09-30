@@ -2,46 +2,68 @@ import java.nio.file.{Paths, Files}
 import java.nio.charset.StandardCharsets
 
 val projectName = System.getProperty("user.dir").split("/").last
-importCode(inputPath = ".", projectName = projectName)
+importCode.cpp(inputPath = ".", projectName = projectName)
 
-// The fefobot.sh should had injected some lines of code at the begin of each file (.cpp and .h)
-// This additional lines are only for us and not visible by the student nor github so when joern computes
-// the lines of each method, we need to substract N from the line numbers as if those injected lines
-// never existed.
-// This N comes from outside in the sourceCodeOffset environment variable
-val sourceCodeOffset = System.getenv().getOrDefault("sourceCodeOffset", "0").toInt
+//val clientMessages = System.getenv().getOrDefault("sourceCodeOffset", "0").toInt
 
 // mapping helpers
-// these convert the Ast objects to an Issue object that keeps the information we want to show
-case class Issue(filename: String, lineNumberStart: Option[Integer], lineNumberEnd: Option[Integer], code: Option[String])
-def methodToIssue(ast: io.shiftleft.codepropertygraph.generated.nodes.AstNode): Issue = {
-  val method = ast.asInstanceOf[Method]
-  Issue(method.filename.toString, method.lineNumber.map(_ - sourceCodeOffset), method.lineNumberEnd.map(_ - sourceCodeOffset), None)
+val extractInfoFromCall = (call: io.shiftleft.codepropertygraph.generated.nodes.Call) => {
+    Map(
+      "id" -> call.id,
+      "lineNumber" -> call.lineNumber,
+      "code" -> call.code,
+      "name" -> call.name
+    );
 }
 
-def literalToIssue(literal: io.shiftleft.codepropertygraph.generated.nodes.Literal): Issue = {
-  Issue(literal.file.toArray.map(f => f.name).head, literal.lineNumber.map(_ - sourceCodeOffset), None, Some(literal.code))
+val extractInfoFromLocal = (local: io.shiftleft.codepropertygraph.generated.nodes.Local) => {
+    Map(
+      "id" -> local.id,
+      "lineNumber" -> local.lineNumber,
+      "code" -> local.code,
+      "name" -> local.name,
+      "typeFullName" -> local.typeFullName
+    );
 }
 
-def paramToIssue(param: io.shiftleft.codepropertygraph.generated.nodes.MethodParameterIn): Issue = {
-  Issue(param.file.toArray.map(f => f.name).head, param.lineNumber.map(_ - sourceCodeOffset), None, None)
+val extractInfoFromParameter = (parameter: io.shiftleft.codepropertygraph.generated.nodes.MethodParameterIn) => {
+    Map(
+      "id" -> parameter.id,
+      "lineNumber" -> parameter.lineNumber,
+      "code" -> parameter.code,
+      "name" -> parameter.name,
+      "typeFullName" -> parameter.typeFullName
+    );
 }
 
-def functionCallToIssue(call: io.shiftleft.codepropertygraph.generated.nodes.Call): Issue = {
-  Issue(call.file.toArray.map(f => f.name).head, call.lineNumber.map(_ - sourceCodeOffset), None, None)
+val extractInfoFromMethod = (method: io.shiftleft.codepropertygraph.generated.nodes.Method) => {
+    Map(
+      "id" -> method.id,
+      "lineNumber" -> method.lineNumber,
+      "lineNumberEnd" -> method.lineNumberEnd,
+      "code" -> method.code,
+      "name" -> method.name,
+      "filename" -> method.filename,
+      "fullName" -> method.fullName,
+      "signature" -> method.signature
+    );
 }
+
+
+// Variable where we are going to collect the results of the queries to be processed
+// later by markdown_issue_builder
+val issuesDetected = scala.collection.mutable.Map[String, String]()
 
 // Queries
 //
 // Convention:
-//  - the name of queries that not represent issues in the code are prefixed with underscore
+//  - the name of queries that don't represent issues in the code are prefixed with underscore
 //    (eg _coutCalls are Calls to cout, it is not a real issue but an auxiliar query)
 //  - *always* call .l, .toList or .toSet. Joern returns Traversable objects (like Iterators) that
 //    once you iterate over, you cannot do it again (they get exhausted) an nobody will warn you!
 //  - if you want to keep dealing with Traversable|Iterators, postfix with Iter
 //  - if you are dealing with Sets, no additional postfixed is assumed (_coutCalls is a Set of Calls)
 //    but if you are working with List or Seq, add that to the name (_coutCallsList is a List of Calls)
-
 
 // Detect [std::]cout calls used for logic and not error printing ----------------------------
 //
@@ -51,71 +73,203 @@ val _coutCalls = (cpg.call.code("cout[ <].*").toSet | cpg.call.code("std[ ]*::[ 
 // From each cout call search for the first inner "if" control structure that is of the form "if (fefobotCatch())"
 // These "if" are actually the "catch" statement that were patched by fefobot.sh
 // We want to *ignore* these cout calls because they are likely to be error printing so we issue codeNot(...)
-// and from there we get the inner method
-// Note: when dealing with ast[Parent|is*] methods we are dealing with AstNode objects. From there
-// we need to go back to Methods, Calls and those objects with
+// and from there we get the inner method.
+//
+// The where() method will drop any call that has an empty Iterator as return.
+// For the cout calls *without* being in an "if" control, we need to provide a fake Iterator
+// (Iterator(42)) otherwise those will be missing those cout calls.
+//
+// Note: we used to deal with ast[Parent|is*] methods so used to work with AstNode objects.
+// To cast them back to Method we used to do it with
 //   <astIterable>.collect(astNode => astNode.asInstanceOf[Method])
-val _nonErrorCoutInMethods = _coutCalls.repeat(_.astParent)(_.until(_.isControlStructure)).codeNot(raw"if \(fefobotCatch\(\)\)").repeat(_.astParent)(_.until(_.isMethod)).collect(astNode => astNode.asInstanceOf[Method]).toSet;
+// Now, we are encapsulating the AstNode and ast* methods in the where() condition so it not longer
+// is a problem.
+val _nonErrorCoutCalls = (
+    _coutCalls.where {
+      call =>
+        val ctrlStructs = call.repeat(_.astParent)(_.until(_.isControlStructure));
+        if (ctrlStructs.nonEmpty) ctrlStructs.codeNot(raw"if \(fefobotCatch\(\)\)") else Iterator(42);
+    }).toSet;
+
 
 // Detect [std::]cin or [std::]getline calls
-val _cinInMethods = (cpg.call.code("cin[ >].*").toSet | cpg.call.code("std[ ]*::[ ]*cin[ >].*").toSet).method.toSet;
-val _getlineInMethods = (cpg.call.code(raw"getline[ ]*\(.*").toSet | cpg.call.code(raw"std[ ]*::[ ]*getline[ ]*\(.*").toSet).method.toSet;
+val _cinCalls = (cpg.call.code("cin[ >].*").toSet | cpg.call.code("std[ ]*::[ ]*cin[ >].*").toSet);
+val _getlineCalls = (cpg.call.code(raw"getline[ ]*\(.*").toSet | cpg.call.code(raw"std[ ]*::[ ]*getline[ ]*\(.*").toSet);
 
-// Any method that we belive contains logic of the app
-val _appLogicMethods = (_nonErrorCoutInMethods | _cinInMethods | _getlineInMethods);
+// Any call that we belive is logic of the app
+val _appLogicCalls = _nonErrorCoutCalls | _cinCalls | _getlineCalls;
+val _appLogicMethods = _appLogicCalls.method.toSet;
 
 // Detect socket/protocol-like calls
-val _protocolMethods = cpg.call.name("hton[sl]|ntoh[sl]").method.toSet;
-val _socketMethods = cpg.call.name("sendall|sendsome|recvall|recvall").method.toSet;
-val _rawSocketMethods = cpg.call.name("send|recv").method.toSet;
+// Note: callIn lists the calls to the given method
+val _protocolCalls = cpg.call.name("hton[sl]|ntoh[sl]").toSet;
+val byteHandlingCalls = (cpg.method.name("<operator>.arithmeticShiftRight").callIn.code(".*>>[ ]*8.*").toSet
+          | cpg.method.name("<operator>.shiftLeft").callIn.code(".*<<[ ]*8.*").toSet);
+val _socketCalls = cpg.call.name("sendall|sendsome|recvall|recvall").toSet;
+val _rawSocketCalls = cpg.call.name("send|recv").toSet;
 
-// Any method that we belive contains protocol/socket logic
-val _protocolSocketLogicMethods = (_protocolMethods | _socketMethods | _rawSocketMethods);
+// Any call that we belive is protocol/socket logic
+val _protocolRelatedLogicCalls = _protocolCalls | _socketCalls | _rawSocketCalls | byteHandlingCalls;
+val _protocolRelatedLogicMethods = _protocolRelatedLogicCalls.method.toSet;
 
-// Detect the filenames where there are methods that mix logic with the protocol
+// Detect the filenames where there are methods of the call that mix logic with the protocol
 // The mix may not happen within the same method but in two different methods of the same file
-val _mixingLogicFilenames = (_appLogicMethods.filename.toSet & _protocolSocketLogicMethods.filename.toSet);
+val _appLogicFilenames = _appLogicMethods.filename.toSet;
+val _protocolRelatedLogicFilenames =  _protocolRelatedLogicMethods.filename.toSet;
+val _mixingLogicFilenames = _appLogicFilenames & _protocolRelatedLogicFilenames;
 
 // Now filter the methods that call cout/cin/... and the ones that do protocol/socket stuff.
 // A single method may not do both but it will belong to a filename that has both.
 // The hypothesis is that if even 2 methods are in the same filename, they belong to the same "unit" (or class)
 // and they should not be mixing logic and protocol/socket.
-val _appOrProtocolSocketLogicMethods = (_appLogicMethods | _protocolSocketLogicMethods);
-val _mixingLogicMethods = _appOrProtocolSocketLogicMethods.filter(meth => _mixingLogicFilenames.contains(meth.filename)).toSet
+val _appOrProtocolRelatedLogicMethods = (_appLogicMethods | _protocolRelatedLogicMethods);
+val _mixingLogicMethods = _appOrProtocolRelatedLogicMethods.filter(method => _mixingLogicFilenames.contains(method.filename)).toSet;
+
+// mixingLogic results:
+//  - the has* attributes say if the method has either application logic (prints)
+//    or protocol/socket logic (hton, recv, ...)
+//  - a method may have both has* attributes in true but none should have both in false.
+try {
+  issuesDetected += ("mixingLogic" -> _mixingLogicMethods.map(method => {
+    Map(
+      "method" -> extractInfoFromMethod(method),
+      "hasAppLogic" -> _appLogicMethods.contains(method),
+      "hasProtocolSocketLogic" -> _protocolRelatedLogicMethods.contains(method)
+      );
+  }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("mixingLogic" -> ("ERROR: " + err));
+}
 
 
+// Endianness handling by hand (shifts and masks)
+try {
+  issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> byteHandlingCalls.map(call => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> ("ERROR: " + err));
+}
+
+
+
+// maybeMisuseSendRecv results:
 // Very-likely incorrect use of raw send/recv functions
-val maybeMisuseSendRecvMethods = _rawSocketMethods;
+try {
+  issuesDetected += ("maybeMisuseSendRecv" -> _rawSocketCalls.map(call => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("maybeMisuseSendRecv" -> ("ERROR: " + err));
+}
+
+
+// Things like 'send_num' are too low level. Protocol should have high level method names (public)
+/*
+var possibleLowLevelProtocolMethods = _protocolRelatedLogicMethods.signature(raw".*(num|int|char).*\(.*").toSet;
+try {
+  issuesDetected += ("possibleLowLevelProtocolMethods" -> possibleLowLevelProtocolMethods.map(method => {
+    Map(
+      "method" -> extractInfoFromMethod(method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("possibleLowLevelProtocolMethods" -> ("ERROR: " + err));
+}
+*/
+
 
 // Check printf scanf  str[n]?cmp str[n]?cpy memcmp
-val cFuncCallMethods = cpg.call.name("str[n]?cmp|str[n]cpy|memcmp|printf|scanf").method.toSet;
+val cFuncCalls = cpg.call.name("str[n]?cmp|str[n]cpy|memcmp|printf|scanf").toSet;
+try {
+  issuesDetected += ("cFuncCalls" -> cFuncCalls.map(call => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("cFuncCalls" -> ("ERROR: " + err));
+}
+
 
 // Calls to malloc, realloc, calloc
-val xallocCallMethods = cpg.call.name("malloc|realloc|calloc|free").method.toSet;
+val cAllocCalls = cpg.call.name("malloc|realloc|calloc|free").toSet;
+try {
+  issuesDetected += ("cAllocCalls" -> cAllocCalls.map(call => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("cAllocCalls" -> ("ERROR: " + err));
+}
 
 // "Local" is a bad name but it is how Joern calls any variable, being local or not.
 // In this case we search all the locals where from each local we have a method with the special
 // name "<global>" which, obviosly means the locals not locals!
-val globalVarsLocals = cpg.local.where(locals => locals.method.name(raw"\<global\>")).toSet;
+//
+// Note: const/constexpr are ignored
+val globalVarsLocals = cpg.local.where(locals => locals.method.name(raw"\<global\>")).codeNot(raw"(constexpr|const)[ ].*").toSet;
+try {
+  issuesDetected += ("globalVariables" -> globalVarsLocals.map(local => {
+    Map(
+      "local" -> extractInfoFromLocal(local),
+      "method" -> extractInfoFromMethod(local.method.head)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("globalVariables" -> ("ERROR: " + err));
+}
 
-
-// new/delete func calls
-val newOp = cpg.call.name("<operator>.new").repeat(_.astParent)(_.until(_.isMethod)).l;
-val delOp = cpg.call.name("<operator>.delete").repeat(_.astParent)(_.until(_.isMethod)).l;
+// New/delete func calls
+// This is not necessary a issue because there is legit use cases. However, allocating
+// primitive types is not. TODO
+val cppAllocCalls = cpg.call.name("<operator>.new.*").toSet | cpg.call.name("<operator>.delete.*").toSet;
 
 // Pass by pointer. For primitive types like char or void, it is ok, for the rest
 // it may indicate an incorrect use of pointers
-// This is going to have false positives when we deal with polymorphism
+// This is going to have false positives when we deal with polymorphism and non-primitive types
+//
+// Note: we do a filtering on codeNot(raw".*;[ ]*") to remove method declarations
+// (we deal with definitions only, joern does not have a shortcut for this)
 val _passByPtrParameters = cpg.parameter.typeFullName(raw".*\*.*").toSet;
 val _passNativeByParamenters = cpg.parameter.typeFullName(raw"(bool|char|void)(\[\])?\*.*").toSet;
-val maybeUnneededPassByPtrParameters = (_passByPtrParameters -- _passNativeByParamenters);
+val maybeUnneededPassByPtrParameters = (_passByPtrParameters -- _passNativeByParamenters).where(parameter => parameter.method.codeNot(raw".*;[ ]*")).toSet
+try {
+  issuesDetected += ("maybeUnneededPassByPtr" -> maybeUnneededPassByPtrParameters.map(parameter => {
+    Map(
+      "parameter" -> extractInfoFromParameter(parameter),
+      "method" -> extractInfoFromMethod(parameter.method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("maybeUnneededPassByPtr" -> ("ERROR: " + err));
+}
 
 // Pass by value non-trivially copiable (and potentially large) object like vector, string, map and list of any type
-val _passByValueParameters = cpg.method.parameter.code(raw".*(:|\s|^)(vector|string|map|list)[^a-zA-Z0-9_].*").code("^[^&]*$").toSet;
+val _passByValueNonTrivialObjectsParameters = cpg.parameter.code(raw".*(:|\s|^)(vector|string|map|list)[^a-zA-Z0-9_].*").code("^[^&]*$").where(parameter => parameter.method.codeNot(raw".*;[ ]*")).toSet;
+try {
+  issuesDetected += ("passByValueNonTrivialObjects" -> _passByValueNonTrivialObjectsParameters.map(parameter => {
+    Map(
+      "parameter" -> extractInfoFromParameter(parameter),
+      "method" -> extractInfoFromMethod(parameter.method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("passByValueNonTrivialObjects" -> ("ERROR: " + err));
+}
 
 
-// long strings
-val longStrings = cpg.literal.typeFullName("char\\[\\d\\d+\\]").l;
+// long strings TODO: probably not needed
+// val longStrings = cpg.literal.typeFullName("char\\[\\d\\d+\\]").l;
 
 // Functions defined outside a class identifier (maybe static or global)
 //
@@ -126,7 +280,16 @@ val longStrings = cpg.literal.typeFullName("char\\[\\d\\d+\\]").l;
 //
 // None of those represents student's real static/global functions so we search
 // for any method that does not match any of those.
-val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".* main\s*\(.*").codeNot("(<empty>|<global>)")).toSet
+val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".* main\s*\(.*").codeNot("(<empty>|<global>)").toSet
+try {
+  issuesDetected += ("globalFunctions" -> globalFuncMethods.map(method => {
+    Map(
+      "method" -> extractInfoFromMethod(method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("globalFunctions" -> ("ERROR: " + err));
+}
 
 
 // Local/Stack buffer allocations -------------------------------------------------------------------------
@@ -138,45 +301,125 @@ val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".*
 // removing syntactic-valid-but-regex-annyoing whitespace
 // NOTE: typeFullName also resolves the 'defines' so if we have 'char buf[SIZE]', typeFullName should
 // be 'char[64]' given  '#define SIZE 64'. NICE!
-val stackBufferAllocatedMethods = cpg.local.typeFullName(raw".*\[[ ]*\d+[ ]*\].*").typeFullNameNot(raw".*\[[ ]*[23][ ]*\].*").method.toSet;
+val stackBufferAllocatedLocals = cpg.local.typeFullName(raw".*\[[ ]*\d+[ ]*\].*").typeFullNameNot(raw".*\[[ ]*[23][ ]*\].*").toSet;
+try {
+  issuesDetected += ("stackBufferAllocated" -> stackBufferAllocatedLocals.map(local => {
+    Map(
+      "local" -> extractInfoFromLocal(local),
+      "method" -> extractInfoFromMethod(local.method.head)
+      );
+  }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("stackBufferAllocated" -> ("ERROR: " + err));
+}
 
+// Local std::vector-based buffers
+// Like stackBufferAllocated, see for buffers of not-expected sizes.
+val vectorBufferAllocatedCalls = (
+  cpg.call.code(".*vector.*<[ ]*(uint8_t|int8_t|char)[ ]*>.*").code(raw".*\([ ]*\d+[ ]*\).*").codeNot(raw".*\([ ]*[23][ ]*\).*").toSet
+);
+try {
+  issuesDetected += ("vectorBufferAllocated" -> vectorBufferAllocatedCalls.map(call => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method)
+      );
+  }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("vectorBufferAllocated" -> ("ERROR: " + err));
+}
 
 // -------------------------------------------------------------------------
 
-// Long functions (more than 35 lines)
-val longFunctions = ({
-  cpg.method.internal.filter(_.numberOfLines > 35).nameNot("<global>")
-}).toSet;
+// Long functions/methods (more than 40 lines), ignoring global functions
+val longMethods = cpg.method.where(method => method.internal.filter(_.numberOfLines > 40).nameNot("<global>")).toSet;
+try {
+  issuesDetected += ("longMethods" -> longMethods.map(method => {
+    Map(
+      "method" -> extractInfoFromMethod(method)
+      );
+  }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("longMethods" -> ("ERROR: " + err));
+}
 
 
-// Methods with nested loops
-val nestedLoopsMethods = ({
-  cpg.method.internal
+// Methods with too many nested loops
+val tooManyNestedLoopsMethods = cpg.method.where(method => method.internal
     .filter(
       _.ast.isControlStructure
         .controlStructureType("(FOR|DO|WHILE)")
         .size > 3
     )
-    .nameNot("<global>")
-}).toSet;
+    .nameNot("<global>")).toSet;
+
+try {
+  issuesDetected += ("tooManyNestedLoopsMethods" -> tooManyNestedLoopsMethods.map(method => {
+    Map(
+      "method" -> extractInfoFromMethod(method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("tooManyNestedLoopsMethods" -> ("ERROR: " + err));
+}
+
+var switchWithoutDefaultMethods = cpg.controlStructure.controlStructureType("SWITCH").method.codeNot(raw".*[ ]default[ ]*:.*").toSet;
+try {
+  issuesDetected += ("switchWithoutDefaultMethods" -> switchWithoutDefaultMethods.map(method => {
+    Map(
+      "method" -> extractInfoFromMethod(method)
+      );
+    }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("switchWithoutDefaultMethods" -> ("ERROR: " + err));
+}
 
 
+var libErrorThrowCalls = cpg.call.name(raw"<operator>.throw").code(raw"throw[ ]+LibError.*").toSet;
+try {
+  issuesDetected += ("libErrorThrowCalls" -> libErrorThrowCalls.map(call => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method)
+      );
+  }).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("libErrorThrowCalls" -> ("ERROR: " + err));
+}
 
-val output = Map(
-  "print" -> printing.map(methodToIssue),
-  "x_alloc" -> xallocCCalls.map(methodToIssue),
-  "protocol_functions" -> protocolFunctionNames.map(methodToIssue),
-  "new" -> newOp.map(methodToIssue),
-  "del" -> delOp.map(methodToIssue),
-  "raw_pointers" -> ptrs.map(paramToIssue),
-  "long_strings" -> longStrings.map(literalToIssue),
-  "copies" -> passByValue.map(methodToIssue),
-  "outside_class" -> outsideClassFunctions.map(methodToIssue),
-  "buffer" -> bufferDefinitions.map(methodToIssue),
-  "long_functions" -> longFunctions.map(methodToIssue),
-  "nested_loops" -> nestedLoops.map(methodToIssue)
-).toJson
+// Nice things to have for FefoBot 3.0:
+//  - detect commented code: I have no idea how to do it, joern does not have support (apparently).
+//  - remove the false positive of cout calls that are not app-logic but error-logic
+//    Maybe we have to drop the cout idea and just search for literal strings that belong
+//    to the app-logic (provided by the user) and then check if in the same .cpp file
+//    there is a mix of app-logic and protocol-logic (mix at the file level, not the method level)
+//    Check cpg.literal.code.l
+//  - allow the reviewer to annotate the source code and then see those as issues. The problem is that
+//    adding lines will screw the line numbers. I dpont' nknow hoew to fix that.
+//  - metodos publicos del protocolo deberia hablar en terminos del modelo: we could detect
+//    the Protocol classes and then list its methods and search things like 'char' or 'byte' in their names
+//    ref: https://github.com/Taller-de-Programacion-TPs/sockets-2024c2-josValentin-fiuba/issues/2
+//  - q se detecten stack buffers de la forma std::vector<char> o std::vector<uint8_t>
+//  - q si el stack buffer es de size 1 o 2, q sea un issue separado y q se proponga usar uint8_t o uint16_t
+//  - chk throw LibError
+//  - no esta siendo detectado esto? https://github.com/Taller-de-Programacion-TPs/sockets-2024c2-FacuGerez/blob/be339912ab71c3719d57f43721a97cee79755222/client_protocolo.cpp#L16
+//  - fix: las funciones de c (strcmp) podrian estar prefijadas con 'std::'
+//  - si la variable global es const deberia permitirse
+//  - la parte de joern podria taggear el codigo con comments para q el reviewer lo revise
+//    y de ultima saque los falsos positivos
+//    de ahi, el reviewer puede agregar mas comments suyos y recien de eso se saca un markdown
+//    lo mas facil seria tener 2 copias del repo: una para sin comments para q joern haga las detecciones
+//    y la otra con todos los comments
+//  - detectar mix the htons y shifts
+//  - this->name.compare("Not Equipped")  por '=='
 
-Files.write(Paths.get("issues-" + projectName + ".json"), output.getBytes(StandardCharsets.UTF_8))
+val fefobot_running = System.getenv().getOrDefault("FEFOBOT_RUNNING", "0").toInt;
+if (fefobot_running == 1) {
+  import org.json4s.native.Json
+  import org.json4s.DefaultFormats
 
-exit
+  val output = Json(DefaultFormats).write(issuesDetected)
+  Files.write(Paths.get("issues-" + projectName + ".json"), output.getBytes(StandardCharsets.UTF_8))
+
+  exit
+}

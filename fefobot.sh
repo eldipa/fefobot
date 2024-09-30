@@ -96,6 +96,7 @@ find . -type f -a \( -not -name '*.cpp' -a -not -name '*.h' -a -not -name '*.fef
 # Delete any file provided by the course
 rm $(grep -Rl --include '*.cpp' 'ssize_t __real_send.int sockfd,') 2>/dev/null || true # common_wrap_socket.cpp
 
+# TODO improve detection, but how?
 rm $(grep -Rl --include '*.cpp' 'empieza la magia arcana proveniente de C') 2>/dev/null || true # liberror.cpp
 rm $(grep -Rl --include '*.cpp' 'obtenida tenemos que ver cual es realmente funcional') 2>/dev/null || true # socket.cpp
 rm $(grep -Rl --include '*.cpp' 'ResolverError::ResolverError.*int.*gai_errno.*') 2>/dev/null || true # resolvererror.cpp
@@ -126,7 +127,10 @@ find . -type f -name '*.cpp' -exec "$SCRIPT_DIR/inject_source_code.sh" {} "$SCRI
 sourceCodeOffset="$(wc -l "$SCRIPT_DIR/injection" | awk '{print $1}')"
 
 echo "Running Joern"
-sourceCodeOffset=$sourceCodeOffset TERM=dumb /home/user/bin/joern/joern-cli/joern --nocolors < "$SCRIPT_DIR/joern_commands.scala"
+set -x
+echo -e "//> using file $SCRIPT_DIR/joern_commands.scala" > ../importer.scala
+FEFOBOT_RUNNING=1 TERM=dumb /home/user/bin/joern/joern-cli/joern --nocolors < ../importer.scala 2>&1 | tee ../joern_last_run.log
+set +x
 
 mv "issues-$path.json" ..
 cd ..
@@ -134,7 +138,9 @@ cd ..
 echo "Output queries saved in" "issues-$path.json"
 echo "Building markdown file"
 
-"$SCRIPT_DIR/markdown_issue_builder" "issues-$path.json" "$commit_hash"
+set -x
+"$SCRIPT_DIR/markdown_issue_builder" "issues-$path.json" "$commit_hash" "$sourceCodeOffset"
+set +x
 
 echo "Markdown file saved in" "issues-$path.md"
 
