@@ -53,6 +53,7 @@ val extractInfoFromMethod = (method: io.shiftleft.codepropertygraph.generated.no
 // Variable where we are going to collect the results of the queries to be processed
 // later by markdown_issue_builder
 val issuesDetected = scala.collection.mutable.Map[String, String]()
+var issueCount = 0;
 
 // Queries
 //
@@ -130,13 +131,15 @@ val _mixingLogicMethods = _appOrProtocolRelatedLogicMethods.filter(method => _mi
 //    or protocol/socket logic (hton, recv, ...)
 //  - a method may have both has* attributes in true but none should have both in false.
 try {
-  issuesDetected += ("mixingLogic" -> _mixingLogicMethods.map(method => {
+  issuesDetected += ("mixingLogic" -> _mixingLogicMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
       "hasAppLogic" -> _appLogicMethods.contains(method),
-      "hasProtocolSocketLogic" -> _protocolRelatedLogicMethods.contains(method)
+      "hasProtocolSocketLogic" -> _protocolRelatedLogicMethods.contains(method),
+      "issue_id" -> (ix + issueCount).toString
       );
-  }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("mixingLogic").size;
 } catch {
   case err => issuesDetected += ("mixingLogic" -> ("ERROR: " + err));
 }
@@ -144,12 +147,14 @@ try {
 
 // Endianness handling by hand (shifts and masks)
 try {
-  issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> byteHandlingCalls.map(call => {
+  issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> byteHandlingCalls.zipWithIndex.map({case (call, ix) => {
     Map(
       "call" -> extractInfoFromCall(call),
-      "method" -> extractInfoFromMethod(call.method)
+      "method" -> extractInfoFromMethod(call.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("possibleEndiannessHandlingByHandCalls").size;
 } catch {
   case err => issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> ("ERROR: " + err));
 }
@@ -159,12 +164,14 @@ try {
 // maybeMisuseSendRecv results:
 // Very-likely incorrect use of raw send/recv functions
 try {
-  issuesDetected += ("maybeMisuseSendRecv" -> _rawSocketCalls.map(call => {
+  issuesDetected += ("maybeMisuseSendRecv" -> _rawSocketCalls.zipWithIndex.map({case (call, ix) => {
     Map(
       "call" -> extractInfoFromCall(call),
-      "method" -> extractInfoFromMethod(call.method)
+      "method" -> extractInfoFromMethod(call.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("maybeMisuseSendRecv").size;
 } catch {
   case err => issuesDetected += ("maybeMisuseSendRecv" -> ("ERROR: " + err));
 }
@@ -174,43 +181,50 @@ try {
 /*
 var possibleLowLevelProtocolMethods = _protocolRelatedLogicMethods.signature(raw".*(num|int|char).*\(.*").toSet;
 try {
-  issuesDetected += ("possibleLowLevelProtocolMethods" -> possibleLowLevelProtocolMethods.map(method => {
+  issuesDetected += ("possibleLowLevelProtocolMethods" -> possibleLowLevelProtocolMethods.zipWithIndex.map({case (method, ix) => {
     Map(
-      "method" -> extractInfoFromMethod(method)
+      "method" -> extractInfoFromMethod(method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("possibleLowLevelProtocolMethods").size;
 } catch {
   case err => issuesDetected += ("possibleLowLevelProtocolMethods" -> ("ERROR: " + err));
 }
 */
 
 
+
 // Check printf scanf  str[n]?cmp str[n]?cpy memcmp
 val cFuncCalls = cpg.call.name("str[n]?cmp|str[n]cpy|memcmp|printf|scanf").toSet;
 try {
-  issuesDetected += ("cFuncCalls" -> cFuncCalls.map(call => {
+  issuesDetected += ("cFuncCalls" -> cFuncCalls.zipWithIndex.map({case (call, ix) => {
     Map(
       "call" -> extractInfoFromCall(call),
-      "method" -> extractInfoFromMethod(call.method)
+      "method" -> extractInfoFromMethod(call.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("cFuncCalls").size;
 } catch {
   case err => issuesDetected += ("cFuncCalls" -> ("ERROR: " + err));
 }
 
-
 // Calls to malloc, realloc, calloc
-val cAllocCalls = cpg.call.name("malloc|realloc|calloc|free").toSet;
+val cAllocCalls = cpg.call.name(raw"(std[ ]*::[ ]*)?malloc|realloc|calloc|free").toSet; // TODO check this query
 try {
-  issuesDetected += ("cAllocCalls" -> cAllocCalls.map(call => {
+  issuesDetected += ("cAllocCalls" -> cAllocCalls.zipWithIndex.map({case (call, ix) => {
     Map(
       "call" -> extractInfoFromCall(call),
-      "method" -> extractInfoFromMethod(call.method)
+      "method" -> extractInfoFromMethod(call.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("cAllocCalls").size;
 } catch {
   case err => issuesDetected += ("cAllocCalls" -> ("ERROR: " + err));
 }
+
 
 // "Local" is a bad name but it is how Joern calls any variable, being local or not.
 // In this case we search all the locals where from each local we have a method with the special
@@ -219,15 +233,18 @@ try {
 // Note: const/constexpr are ignored
 val globalVarsLocals = cpg.local.where(locals => locals.method.name(raw"\<global\>")).codeNot(raw"(constexpr|const)[ ].*").toSet;
 try {
-  issuesDetected += ("globalVariables" -> globalVarsLocals.map(local => {
+  issuesDetected += ("globalVariables" -> globalVarsLocals.zipWithIndex.map({case (local, ix) => {
     Map(
       "local" -> extractInfoFromLocal(local),
-      "method" -> extractInfoFromMethod(local.method.head)
+      "method" -> extractInfoFromMethod(local.method.head),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("globalVariables").size;
 } catch {
   case err => issuesDetected += ("globalVariables" -> ("ERROR: " + err));
 }
+
 
 // New/delete func calls
 // This is not necessary a issue because there is legit use cases. However, allocating
@@ -244,12 +261,14 @@ val _passByPtrParameters = cpg.parameter.typeFullName(raw".*\*.*").toSet;
 val _passNativeByParamenters = cpg.parameter.typeFullName(raw"(bool|char|void)(\[\])?\*.*").toSet;
 val maybeUnneededPassByPtrParameters = (_passByPtrParameters -- _passNativeByParamenters).where(parameter => parameter.method.codeNot(raw".*;[ ]*")).toSet
 try {
-  issuesDetected += ("maybeUnneededPassByPtr" -> maybeUnneededPassByPtrParameters.map(parameter => {
+  issuesDetected += ("maybeUnneededPassByPtr" -> maybeUnneededPassByPtrParameters.zipWithIndex.map({case (parameter, ix) => {
     Map(
       "parameter" -> extractInfoFromParameter(parameter),
-      "method" -> extractInfoFromMethod(parameter.method)
+      "method" -> extractInfoFromMethod(parameter.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("maybeUnneededPassByPtr").size;
 } catch {
   case err => issuesDetected += ("maybeUnneededPassByPtr" -> ("ERROR: " + err));
 }
@@ -257,12 +276,14 @@ try {
 // Pass by value non-trivially copiable (and potentially large) object like vector, string, map and list of any type
 val _passByValueNonTrivialObjectsParameters = cpg.parameter.code(raw".*(:|\s|^)(vector|string|map|list)[^a-zA-Z0-9_].*").code("^[^&]*$").where(parameter => parameter.method.codeNot(raw".*;[ ]*")).toSet;
 try {
-  issuesDetected += ("passByValueNonTrivialObjects" -> _passByValueNonTrivialObjectsParameters.map(parameter => {
+  issuesDetected += ("passByValueNonTrivialObjects" -> _passByValueNonTrivialObjectsParameters.zipWithIndex.map({case (parameter, ix) => {
     Map(
       "parameter" -> extractInfoFromParameter(parameter),
-      "method" -> extractInfoFromMethod(parameter.method)
+      "method" -> extractInfoFromMethod(parameter.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("passByValueNonTrivialObjects").size;
 } catch {
   case err => issuesDetected += ("passByValueNonTrivialObjects" -> ("ERROR: " + err));
 }
@@ -282,11 +303,13 @@ try {
 // for any method that does not match any of those.
 val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".* main\s*\(.*").codeNot("(<empty>|<global>)").toSet
 try {
-  issuesDetected += ("globalFunctions" -> globalFuncMethods.map(method => {
+  issuesDetected += ("globalFunctions" -> globalFuncMethods.zipWithIndex.map({case (method, ix) => {
     Map(
-      "method" -> extractInfoFromMethod(method)
+      "method" -> extractInfoFromMethod(method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("globalFunctions").size;
 } catch {
   case err => issuesDetected += ("globalFunctions" -> ("ERROR: " + err));
 }
@@ -303,12 +326,14 @@ try {
 // be 'char[64]' given  '#define SIZE 64'. NICE!
 val stackBufferAllocatedLocals = cpg.local.typeFullName(raw".*\[[ ]*\d+[ ]*\].*").typeFullNameNot(raw".*\[[ ]*[23][ ]*\].*").toSet;
 try {
-  issuesDetected += ("stackBufferAllocated" -> stackBufferAllocatedLocals.map(local => {
+  issuesDetected += ("stackBufferAllocated" -> stackBufferAllocatedLocals.zipWithIndex.map({case (local, ix) => {
     Map(
       "local" -> extractInfoFromLocal(local),
-      "method" -> extractInfoFromMethod(local.method.head)
+      "method" -> extractInfoFromMethod(local.method.head),
+      "issue_id" -> (ix + issueCount).toString
       );
-  }).toJsonPretty);
+  }}).toJsonPretty);
+    issueCount += issuesDetected.get("stackBufferAllocated").size;
 } catch {
   case err => issuesDetected += ("stackBufferAllocated" -> ("ERROR: " + err));
 }
@@ -319,12 +344,14 @@ val vectorBufferAllocatedCalls = (
   cpg.call.code(".*vector.*<[ ]*(uint8_t|int8_t|char)[ ]*>.*").code(raw".*\([ ]*\d+[ ]*\).*").codeNot(raw".*\([ ]*[23][ ]*\).*").toSet
 );
 try {
-  issuesDetected += ("vectorBufferAllocated" -> vectorBufferAllocatedCalls.map(call => {
+  issuesDetected += ("vectorBufferAllocated" -> vectorBufferAllocatedCalls.zipWithIndex.map({case (call, ix) => {
     Map(
       "call" -> extractInfoFromCall(call),
-      "method" -> extractInfoFromMethod(call.method)
+      "method" -> extractInfoFromMethod(call.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-  }).toJsonPretty);
+  }}).toJsonPretty);
+    issueCount += issuesDetected.get("vectorBufferAllocated").size;
 } catch {
   case err => issuesDetected += ("vectorBufferAllocated" -> ("ERROR: " + err));
 }
@@ -334,11 +361,13 @@ try {
 // Long functions/methods (more than 40 lines), ignoring global functions
 val longMethods = cpg.method.where(method => method.internal.filter(_.numberOfLines > 40).nameNot("<global>")).toSet;
 try {
-  issuesDetected += ("longMethods" -> longMethods.map(method => {
+  issuesDetected += ("longMethods" -> longMethods.zipWithIndex.map({case (method, ix) => {
     Map(
-      "method" -> extractInfoFromMethod(method)
+      "method" -> extractInfoFromMethod(method),
+      "issue_id" -> (ix + issueCount).toString
       );
-  }).toJsonPretty);
+  }}).toJsonPretty);
+    issueCount += issuesDetected.get("longMethods").size;
 } catch {
   case err => issuesDetected += ("longMethods" -> ("ERROR: " + err));
 }
@@ -354,22 +383,26 @@ val tooManyNestedLoopsMethods = cpg.method.where(method => method.internal
     .nameNot("<global>")).toSet;
 
 try {
-  issuesDetected += ("tooManyNestedLoopsMethods" -> tooManyNestedLoopsMethods.map(method => {
+  issuesDetected += ("tooManyNestedLoopsMethods" -> tooManyNestedLoopsMethods.zipWithIndex.map({case (method, ix) => {
     Map(
-      "method" -> extractInfoFromMethod(method)
+      "method" -> extractInfoFromMethod(method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("tooManyNestedLoopsMethods").size;
 } catch {
   case err => issuesDetected += ("tooManyNestedLoopsMethods" -> ("ERROR: " + err));
 }
 
 var switchWithoutDefaultMethods = cpg.controlStructure.controlStructureType("SWITCH").method.codeNot(raw".*[ ]default[ ]*:.*").toSet;
 try {
-  issuesDetected += ("switchWithoutDefaultMethods" -> switchWithoutDefaultMethods.map(method => {
+  issuesDetected += ("switchWithoutDefaultMethods" -> switchWithoutDefaultMethods.zipWithIndex.map({case (method, ix) => {
     Map(
-      "method" -> extractInfoFromMethod(method)
+      "method" -> extractInfoFromMethod(method),
+      "issue_id" -> (ix + issueCount).toString
       );
-    }).toJsonPretty);
+    }}).toJsonPretty);
+    issueCount += issuesDetected.get("switchWithoutDefaultMethods").size;
 } catch {
   case err => issuesDetected += ("switchWithoutDefaultMethods" -> ("ERROR: " + err));
 }
@@ -377,12 +410,14 @@ try {
 
 var libErrorThrowCalls = cpg.call.name(raw"<operator>.throw").code(raw"throw[ ]+LibError.*").toSet;
 try {
-  issuesDetected += ("libErrorThrowCalls" -> libErrorThrowCalls.map(call => {
+  issuesDetected += ("libErrorThrowCalls" -> libErrorThrowCalls.zipWithIndex.map({case (call, ix) => {
     Map(
       "call" -> extractInfoFromCall(call),
-      "method" -> extractInfoFromMethod(call.method)
+      "method" -> extractInfoFromMethod(call.method),
+      "issue_id" -> (ix + issueCount).toString
       );
-  }).toJsonPretty);
+  }}).toJsonPretty);
+    issueCount += issuesDetected.get("libErrorThrowCalls").size;
 } catch {
   case err => issuesDetected += ("libErrorThrowCalls" -> ("ERROR: " + err));
 }
@@ -394,22 +429,11 @@ try {
 //    to the app-logic (provided by the user) and then check if in the same .cpp file
 //    there is a mix of app-logic and protocol-logic (mix at the file level, not the method level)
 //    Check cpg.literal.code.l
-//  - allow the reviewer to annotate the source code and then see those as issues. The problem is that
-//    adding lines will screw the line numbers. I dpont' nknow hoew to fix that.
 //  - metodos publicos del protocolo deberia hablar en terminos del modelo: we could detect
 //    the Protocol classes and then list its methods and search things like 'char' or 'byte' in their names
 //    ref: https://github.com/Taller-de-Programacion-TPs/sockets-2024c2-josValentin-fiuba/issues/2
-//  - q se detecten stack buffers de la forma std::vector<char> o std::vector<uint8_t>
-//  - q si el stack buffer es de size 1 o 2, q sea un issue separado y q se proponga usar uint8_t o uint16_t
-//  - chk throw LibError
 //  - no esta siendo detectado esto? https://github.com/Taller-de-Programacion-TPs/sockets-2024c2-FacuGerez/blob/be339912ab71c3719d57f43721a97cee79755222/client_protocolo.cpp#L16
 //  - fix: las funciones de c (strcmp) podrian estar prefijadas con 'std::'
-//  - si la variable global es const deberia permitirse
-//  - la parte de joern podria taggear el codigo con comments para q el reviewer lo revise
-//    y de ultima saque los falsos positivos
-//    de ahi, el reviewer puede agregar mas comments suyos y recien de eso se saca un markdown
-//    lo mas facil seria tener 2 copias del repo: una para sin comments para q joern haga las detecciones
-//    y la otra con todos los comments
 //  - detectar mix the htons y shifts
 //  - this->name.compare("Not Equipped")  por '=='
 
@@ -418,8 +442,10 @@ if (fefobot_running == 1) {
   import org.json4s.native.Json
   import org.json4s.DefaultFormats
 
+  val issue_fname = System.getenv().getOrDefault("FEFOBOT_ISSUE_FNAME", "last-issues-detected-by-joern.json");
+
   val output = Json(DefaultFormats).write(issuesDetected)
-  Files.write(Paths.get("issues-" + projectName + ".json"), output.getBytes(StandardCharsets.UTF_8))
+  Files.write(Paths.get(issue_fname), output.getBytes(StandardCharsets.UTF_8))
 
   exit
 }

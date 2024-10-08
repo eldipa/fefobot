@@ -11,9 +11,7 @@ fi
 target=$1
 injectionfile=$2
 
-if grep -q 'FEFOBOT - INJECTION' "$target" ; then
-    echo ""
-else
+if ! grep -q 'FEFOBOT - INJECTION' "$target" ; then
     cat "$injectionfile" "$target" > .injected_fefobot_tmp_file
     mv .injected_fefobot_tmp_file "$target"
 fi

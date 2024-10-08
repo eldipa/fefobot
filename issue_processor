@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys
+import sys, os, os.path
 
 import json, collections
 from jinja2 import Template
@@ -17,6 +17,7 @@ issue_template = Template("""
 
 
 def read_issues(filename):
+    issue_cnt = 0
     with open(filename, 'r') as f:
         main_dict = json.load(f)
         for k in list(main_dict.keys()):
@@ -26,24 +27,62 @@ def read_issues(filename):
             else:
                 # values are json themselves
                 main_dict[k] = json.loads(main_dict[k])
+                print(f"Issue type '{k}': {len(main_dict[k])} issues")
+                issue_cnt += len(main_dict[k])
 
+        print(f"Found {issue_cnt} issues in total")
         return main_dict
 
-class MarkdownIssueFormatter:
-    def __init__(self, repo_name, last_commit_hash, src_lineno_offset):
+class IssueProcessor:
+    def __init__(self, process_method_prefix, src_lineno_offset):
+        self.process_method_prefix = process_method_prefix
+        self.src_lineno_offset = src_lineno_offset
+
+    def pick_up_to(self, cnt, occurrences):
+        orig_cnt = len(occurrences)
+        more = orig_cnt > cnt
+        occurrences = occurrences[:cnt]
+
+        return occurrences, more, orig_cnt
+
+    def filename_of(self, occurrence):
+        filename = occurrence['method']['filename']
+        if filename.endswith(".h.cpp"):
+            filename = filename[:-4] # strip ".cpp"
+
+        return filename
+
+    def single_lineno_of(self, obj):
+        return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumber'] - self.src_lineno_offset)
+
+    def range_lineno_of(self, obj):
+        return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumberEnd'] - self.src_lineno_offset)
+
+    def close():
+        raise NotImplementedError()
+
+    def process_issue_fallback(self, issue_code_name, occurrences):
+        raise Exception(f"Issue code name '{issue_code_name}' has no a {self.process_method_prefix} method associated.")
+
+    def process_issue(self, issue_code_name, occurrences):
+        cmd = f'{self.process_method_prefix}_{issue_code_name}'
+
+        method = getattr(self, cmd, None)
+        if method == None:
+            self.process_issue_fallback(issue_code_name, occurrences)
+        else:
+            if occurrences:
+                method(occurrences)
+
+class IssueFormatter(IssueProcessor):
+    def __init__(self, repo_name, last_commit_hash, src_lineno_offset, output_filename):
+        IssueProcessor.__init__(self, 'format', src_lineno_offset)
         self.repo_name = repo_name
         self.last_commit_hash = last_commit_hash
-        self.src_lineno_offset = src_lineno_offset
 
         self.out_chunks = []
 
-    def format_issue(self, issue_code_name, occurrences):
-        method = getattr(self, f'format_{issue_code_name}', None)
-        if method == None:
-            raise Exception(f"Issue code name '{issue_code_name}' has no a format method associated.")
-
-        if occurrences:
-            method(occurrences)
+        self.output_filename = output_filename
 
 
     def format_mixingLogic(self, occurrences):
@@ -92,7 +131,7 @@ class MarkdownIssueFormatter:
                 True,
                 occurrences,
                 4,
-                'parameter',
+                'call',
                 single_line=True
                 )
 
@@ -135,6 +174,17 @@ class MarkdownIssueFormatter:
         self._format_issue(
                 "Excepcion incorrecta",
                 "`LibError` es para errores del sistema o de la stdlib q tenga un `errno` valido. Posiblemente quieras usar otro tipo de excepcion como `std::runtime_error`.",
+                True,
+                occurrences,
+                2,
+                'call',
+                single_line=True
+                )
+
+    def format_comparePossiblyStringCalls(self, occurrences):
+        self._format_issue(
+                "Usar operador ==",
+                "",
                 True,
                 occurrences,
                 2,
@@ -283,26 +333,6 @@ class MarkdownIssueFormatter:
         if more and hint_more:
             self.write_desc("Puede que haya más casos en tu código.")
 
-    def pick_up_to(self, cnt, occurrences):
-        orig_cnt = len(occurrences)
-        more = orig_cnt > cnt
-        occurrences = occurrences[:cnt]
-
-        return occurrences, more, orig_cnt
-
-    def filename_of(self, occurrence):
-        filename = occurrence['method']['filename']
-        if filename.endswith(".h.cpp"):
-            filename = filename[:-4] # strip ".cpp"
-
-        return filename
-
-    def single_lineno_of(self, obj):
-        return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumber'] - self.src_lineno_offset)
-
-    def range_lineno_of(self, obj):
-        return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumberEnd'] - self.src_lineno_offset)
-
     def write_title(self, title):
         self.out_chunks.append(f"### {title}")
 
@@ -318,8 +348,8 @@ class MarkdownIssueFormatter:
             end
         ))
 
-    def close_formating_and_write_file(self, output_filename):
-        with open(f"{output_filename}.md", 'w') as f:
+    def close(self):
+        with open(f"{self.output_filename}.md", 'w') as f:
             for chunk in self.out_chunks:
                 f.write(chunk)
                 f.write("\n")
@@ -327,21 +357,231 @@ class MarkdownIssueFormatter:
         self.out_chunks = None # make sure nobody use this again
 
 
+class IssueAnnotator(IssueProcessor):
+    def __init__(self, issue_file, src_lineno_offset, to_annotate_repo_path):
+        IssueProcessor.__init__(self, 'annotate', src_lineno_offset)
+        self.issue_file = issue_file
+        self.to_annotate_repo_path = to_annotate_repo_path
+
+        self.annotation_chunks_by_filename = {}
+
+    def _annotate_issue(self, title, occurrences, pick_up_cnt, obj_name):
+        pick_up_cnt = 1000 # TODO
+        assert obj_name in ['method', 'parameter', 'call', 'local']
+        occurrences, more, _ = self.pick_up_to(pick_up_cnt, occurrences)
+
+        for occurrence in occurrences:
+            filename = self.filename_of(occurrence)
+            issue_id = int(occurrence['issue_id'])
+
+            lineno_start, _ = self.single_lineno_of(occurrence[obj_name])
+            self.annotate_issue(filename, lineno_start, issue_id, title)
+
+    def annotate_issue(self, filename, start, issue_id, title):
+        if filename in self.annotation_chunks_by_filename:
+            self.annotation_chunks_by_filename[filename].append((start, issue_id, title))
+        else:
+            self.annotation_chunks_by_filename[filename] = [(start, issue_id, title)]
+
+    def close(self):
+        for filename, annotations in self.annotation_chunks_by_filename.items():
+            annotations.sort(reverse=True)
+            full_fname = os.path.join(self.to_annotate_repo_path, filename)
+
+            print(f"Annotating {full_fname}...")
+            with open(full_fname, 'rt') as f:
+                lines = list(f)
+
+            for lineno, issue_id, msg in annotations:
+                assert lineno >= 1
+                lines.insert(lineno - 1, f'\n/* XXX fefobot-annotation:{issue_id} {msg} */\n')
+
+            with open(full_fname, 'wt') as f:
+                f.write(''.join(lines))
+
+        self.annotation_chunks_by_filename = None # make sure nobody use this again
+
+    def process_issue_fallback(self, issue_code_name, occurrences):
+        pass
+
+
+    def annotate_mixingLogic(self, occurrences):
+        pass # Not supported
+
+    def annotate_maybeMisuseSendRecv(self, occurrences):
+        self._annotate_issue(
+                "Esta bien esto?",
+                occurrences,
+                4,
+                'call',
+                )
+
+    def annotate_cFuncCalls(self, occurrences):
+        self._annotate_issue(
+                "No deberias necesitar usar funciones de C",
+                occurrences,
+                4,
+                'call',
+                )
+
+
+    def annotate_cAllocCalls(self, occurrences):
+        self._annotate_issue(
+                "Usar C++y no C",
+                occurrences,
+                4,
+                'call',
+                )
+
+    def annotate_possibleEndiannessHandlingByHandCalls(self, occurrences):
+        self._annotate_issue(
+                "Manejo del endianness a mano",
+                occurrences,
+                4,
+                'call',
+                )
+
+
+    def annotate_libErrorThrowCalls(self, occurrences):
+        self._annotate_issue(
+                "Excepcion incorrecta",
+                occurrences,
+                2,
+                'call',
+                )
+
+    def annotate_comparePossiblyStringCalls(self, occurrences):
+        self._annotate_issue(
+                "Usar ==",
+                occurrences,
+                2,
+                'call',
+                )
+
+    def annotate_globalVariables(self, occurrences):
+        self._annotate_issue(
+                "Variables globales",
+                occurrences,
+                4,
+                'local',
+                )
+
+    def annotate_maybeUnneededPassByPtr(self, occurrences):
+        self._annotate_issue(
+                "Pasaje por puntero",
+                occurrences,
+                8,
+                'parameter',
+                )
+
+
+    def annotate_passByValueNonTrivialObjects(self, occurrences):
+        self._annotate_issue(
+                "Pasaje por copia",
+                occurrences,
+                8,
+                'parameter',
+                )
+
+    def annotate_globalFunctions(self, occurrences):
+        self._annotate_issue(
+                "Funciones globales",
+                occurrences,
+                2,
+                'method',
+                )
+
+
+    def annotate_stackBufferAllocated(self, occurrences):
+        self._annotate_issue(
+                "Estas seguro q este buffer es necesario?",
+                occurrences,
+                4,
+                'local',
+                )
+
+    def annotate_vectorBufferAllocated(self, occurrences):
+        self._annotate_issue(
+                "Estas seguro q este buffer es necesario?",
+                occurrences,
+                4,
+                'call',
+                )
+
+
+    def annotate_longMethods(self, occurrences):
+        self._annotate_issue(
+                "Método muy largo",
+                occurrences,
+                2,
+                'method',
+                )
+
+    def annotate_tooManyNestedLoopsMethods(self, occurrences):
+        self._annotate_issue(
+                "Mucha anidación",
+                occurrences,
+                2,
+                'method',
+                )
+
+    def annotate_switchWithoutDefaultMethods(self, occurrences):
+        self._annotate_issue(
+                "Poner un default en el switch q lanze un error",
+                occurrences,
+                2,
+                'method',
+                )
+
+    if False:
+        def annotate_possibleLowLevelProtocolMethods(self, occurrences):
+            self._annotate_issue(
+                    "Se expone demansiado detalle",
+                    occurrences,
+                    2,
+                    'method',
+                    )
+
+def usage():
+    print(f"Usage: {sys.argv[0]} 'format' <issue_file_path>  <repo_name> <last_commit_hash> <src_lineno_offset>", file=sys.stderr)
+    print(f"Usage: {sys.argv[0]} 'annotate' <issue_file_path> <to_annotate_repo_path> <src_lineno_offset>", file=sys.stderr)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <issue_file_path> <last_commit_hash> <src_lineno_offset>", file=sys.stderr)
+    if len(sys.argv) <= 2:
+        usage()
         exit(1)
-    issue_file = sys.argv[1]
-    last_commit_hash = sys.argv[2]
-    src_lineno_offset = int(sys.argv[3])
 
-    print(issue_file)
-    repo_name = issue_file.replace("issues-", "").replace(".json", "")
-    print(repo_name)
+    operation_mode = sys.argv[1]
+    if operation_mode not in ('format', 'annotate'):
+        usage()
+        exit(1)
 
-    fmt = MarkdownIssueFormatter(repo_name, last_commit_hash, src_lineno_offset)
+    if operation_mode == 'format':
+        try:
+            issue_file = sys.argv[2]
+            repo_name = sys.argv[3]
+            last_commit_hash = sys.argv[4]
+            src_lineno_offset = int(sys.argv[5])
+            assert len(sys.argv) == 6
+        except:
+            usage()
+            exit(1)
+
+        proc = IssueFormatter(repo_name, last_commit_hash, src_lineno_offset, issue_file.replace(".json", ""))
+
+    elif operation_mode == 'annotate':
+        try:
+            issue_file = sys.argv[2]
+            public_git_repo= sys.argv[3]
+            src_lineno_offset = int(sys.argv[4])
+            assert len(sys.argv) == 5
+        except:
+            usage()
+            exit(1)
+
+        proc = IssueAnnotator(issue_file, src_lineno_offset, public_git_repo)
+
     for issue_name, occurrences in read_issues(issue_file).items():
-        fmt.format_issue(issue_name, occurrences)
+        proc.process_issue(issue_name, occurrences)
 
-    fmt.close_formating_and_write_file(issue_file.replace(".json", ""))
+    proc.close()
