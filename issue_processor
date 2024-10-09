@@ -16,21 +16,28 @@ issue_template = Template("""
 """)
 
 
-def read_issues(filename):
+def read_issues(filename, mode):
+    if mode == 'serialize':
+        def p(*args, **kargs):
+            print(*args, **kargs)
+    else:
+        def p(*args, **kargs):
+            pass
+
     issue_cnt = 0
     with open(filename, 'r') as f:
         main_dict = json.load(f)
         for k in list(main_dict.keys()):
             if main_dict[k].startswith("ERROR:"):
-                print(f"!!! Error found from Joern for the issue type '{k}': {main_dict[k]}")
+                p(f"!!! Error found from Joern for the issue type '{k}': {main_dict[k]}")
                 del main_dict[k]
             else:
                 # values are json themselves
                 main_dict[k] = json.loads(main_dict[k])
-                print(f"Issue type '{k}': {len(main_dict[k])} issues")
+                p(f"Issue type '{k}': {len(main_dict[k])} issues")
                 issue_cnt += len(main_dict[k])
 
-        print(f"Found {issue_cnt} issues in total")
+        p(f"Found {issue_cnt} issues in total")
         return main_dict
 
 class IssueProcessor:
@@ -57,6 +64,12 @@ class IssueProcessor:
 
     def range_lineno_of(self, obj):
         return (obj['lineNumber'] - self.src_lineno_offset, obj['lineNumberEnd'] - self.src_lineno_offset)
+
+    def lineno_of(self, obj):
+        if 'lineNumberEnd' in obj:
+            return self.range_lineno_of(obj)
+        else:
+            return self.single_lineno_of(obj)
 
     def close():
         raise NotImplementedError()
@@ -542,9 +555,67 @@ class IssueAnnotator(IssueProcessor):
                     'method',
                     )
 
+class IssueSerializer(IssueProcessor):
+    def __init__(self, repo_name, src_lineno_offset, output_filename):
+        IssueProcessor.__init__(self, 'serialize', src_lineno_offset)
+        self.repo_name = repo_name
+
+        self.issues_tracked = []
+
+        self.output_filename = output_filename
+
+    def close(self):
+        self.issues_tracked.sort()
+        with open(f"{self.output_filename}.test_results.md", 'w') as f:
+            for filename, issue_code_name, lineno_start, lineno_end, snippet in self.issues_tracked:
+                msg = f'### {self.repo_name} - {filename} - {issue_code_name} - {lineno_start}:{lineno_end}\n'
+                f.write(msg)
+
+                msg = f'```cpp\n{snippet}\n```\n'
+                f.write(msg)
+
+        self.issues_tracked = None # make sure nobody use this again
+
+
+    def process_issue_fallback(self, issue_code_name, occurrences):
+        for occurrence in occurrences:
+            filename = self.filename_of(occurrence)
+
+            for try_obj_name in ('method', 'call', 'local', 'parameter'):
+                if try_obj_name in occurrence:
+                    obj_name = try_obj_name
+                    break
+            else:
+                raise Exception(f"No valid object in the issue-occurrence '{occurrence}'")
+
+            lineno_start, lineno_end = self.lineno_of(occurrence[obj_name])
+            snippet = self.get_snippet(filename, lineno_start, lineno_end)
+            self.issues_tracked.append((filename, issue_code_name, lineno_start, lineno_end, snippet))
+
+    def get_snippet(self, filename, lineno_start, lineno_end):
+        # Note: issue_processor in 'serialize' mode works with the 'joern' version of the repository
+        # (aka 'repo_name').
+        #
+        # This means that the filename and the line numbers needs to be changed to work with
+        # the modified repo (the orignal values work for the original git repo, hence the need of the change)
+
+        if filename.endswith('.h'):
+            filename += '.cpp'
+
+        lineno_start += self.src_lineno_offset
+        lineno_end += self.src_lineno_offset
+
+        full_fname = os.path.join(self.repo_name, filename)
+        with open(full_fname, 'rt') as f:
+            lines = list(f)
+
+        return ''.join(lines[lineno_start - 1 : lineno_end])
+
+
 def usage():
     print(f"Usage: {sys.argv[0]} 'format' <issue_file_path>  <repo_name> <last_commit_hash> <src_lineno_offset>", file=sys.stderr)
     print(f"Usage: {sys.argv[0]} 'annotate' <issue_file_path> <to_annotate_repo_path> <src_lineno_offset>", file=sys.stderr)
+    print(f"Usage: {sys.argv[0]} 'serialize' <issue_file_path>  <repo_name> <src_lineno_offset>", file=sys.stderr)
 
 if __name__ == '__main__':
     if len(sys.argv) <= 2:
@@ -552,7 +623,7 @@ if __name__ == '__main__':
         exit(1)
 
     operation_mode = sys.argv[1]
-    if operation_mode not in ('format', 'annotate'):
+    if operation_mode not in ('format', 'annotate', 'serialize'):
         usage()
         exit(1)
 
@@ -581,7 +652,19 @@ if __name__ == '__main__':
 
         proc = IssueAnnotator(issue_file, src_lineno_offset, public_git_repo)
 
-    for issue_name, occurrences in read_issues(issue_file).items():
+    elif operation_mode == 'serialize':
+        try:
+            issue_file = sys.argv[2]
+            repo_name = sys.argv[3]
+            src_lineno_offset = int(sys.argv[4])
+            assert len(sys.argv) == 5
+        except:
+            usage()
+            exit(1)
+
+        proc = IssueSerializer(repo_name, src_lineno_offset, issue_file.replace(".json", ""))
+
+    for issue_name, occurrences in read_issues(issue_file, operation_mode).items():
         proc.process_issue(issue_name, occurrences)
 
     proc.close()

@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 <workdir> <course> <exercise> <username> <release>"
+    echo "Usage: $0 [-f|--force-clone] <workdir> <course> <exercise> <username> <release>"
     echo "Example: $0 /home/user/correcciones/ 2024c2 sockets student-github-user v42"
     exit 1
 }
