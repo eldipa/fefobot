@@ -3,3 +3,8 @@ issues-sockets-*
 issues-threads-*
 sockets-20*
 threads-20*
+tests/cases/importer.scala
+tests/cases/joern_last_run.log
+tests/obtained/
+!tests/cases/*-joern
+!tests/expected/*-joern.test_results.md

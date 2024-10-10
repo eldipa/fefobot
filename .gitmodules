@@ -1,0 +1,3 @@
+[submodule "fefobot-tests"]
+	path = fefobot-tests
+	url = git@github.com:Taller-de-Programacion-TPs/fefobot-tests.git
