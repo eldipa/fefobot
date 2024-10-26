@@ -138,7 +138,7 @@ clone_release() {
 
     echo "Checkout & branching tag '$tag' (release: '$release')"
 
-    git checkout -b "$dst_folder" "$tag"
+    git checkout -b "$dst_folder-$tag" "$tag"
 
     local commit_hash; commit_hash=$(git rev-parse HEAD)
     cd ..
