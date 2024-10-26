@@ -4,9 +4,16 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 [-f|--force-clone] <workdir> <course> [sockets|threads] <username> [<release>]"
-    echo "Example: $0 /home/user/correcciones/01/ 2024c2 sockets student-github-user v42"
-    echo "Example: $0 /home/user/correcciones/02/ 2024c2 threads student-github-user"
+    echo "Usage: $0 [-f|--force-clone] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
+    echo "Example: $0 /home/user/correcciones/ 2024c2 sockets 2 student-github-user v42"
+    echo "Example: $0 /home/user/correcciones/ 2024c2 threads 1 student-github-user"
+    echo
+    echo "Note: <n> is an arbitrary number, it could mean the exercise number (1 or 2)"
+    echo "or it could be anything else. Nothing is enforced."
+    echo
+    echo "Note: if not <release> is given, find the 'latest'."
+    echo
+    echo "Note: <workdir> must exists."
     exit 1
 }
 
@@ -25,6 +32,8 @@ while [[ $# -gt 0 ]]; do
                 course="$1"
             elif [ -z "$exercise" ]; then
                 exercise="$1"
+            elif [ -z "$exercise_num" ]; then
+                exercise_num="$1"
             elif [ -z "$username" ]; then
                 username="$1"
             elif [ -z "$release" ]; then
@@ -39,6 +48,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$username" -o -z "$exercise" -o -z "$course" -o -z "$workdir" ]; then
+    usage
+fi
+
+if [ "$exercise" != "sockets" -a "$exercise" != "threads" ]; then
     usage
 fi
 
@@ -71,7 +84,7 @@ fi
 
 repo_name="$exercise-$course-$username"
 
-public_git_repo="$repo_name-$release"
+public_git_repo="$exercise-$exercise_num-$course-$username-$release"
 private_joern_repo="$public_git_repo-joern"
 
 # Clone the repository, checkout to the tag that the given release has associated
