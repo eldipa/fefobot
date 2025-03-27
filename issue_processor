@@ -2,19 +2,9 @@
 import sys, os, os.path
 
 import json, collections
-from jinja2 import Template
 
 # repo - last_commit_hash - filename - line_start - line_end
 github_permalink_template = "https://github.com/Taller-de-Programacion-TPs/{}/blob/{}/{}#L{}-L{}"
-
-issue_template = Template("""
-# {{ issue_title }}
-
-{% for permalink in permalinks %}
-{{ permalink }}
-{% endfor %}
-""")
-
 
 def read_issues(filename, mode):
     if mode == 'serialize':
@@ -71,7 +61,7 @@ class IssueProcessor:
         else:
             return self.single_lineno_of(obj)
 
-    def close():
+    def close(self):
         raise NotImplementedError()
 
     def process_issue_fallback(self, issue_code_name, occurrences):
@@ -361,7 +351,12 @@ class IssueFormatter(IssueProcessor):
             end
         ))
 
+    def write_reviewer_user(self, reviewer):
+        self.out_chunks.append(f"**Corrector:** {reviewer}")
+
     def close(self):
+        if reviewer is not None:
+            self.write_reviewer_user(reviewer)
         with open(f"{self.output_filename}.md", 'w') as f:
             for chunk in self.out_chunks:
                 f.write(chunk)
@@ -633,7 +628,8 @@ if __name__ == '__main__':
             repo_name = sys.argv[3]
             last_commit_hash = sys.argv[4]
             src_lineno_offset = int(sys.argv[5])
-            assert len(sys.argv) == 6
+            reviewer = sys.argv[6] if len(sys.argv) == 7 else None
+            assert 6 <= len(sys.argv) <= 7
         except:
             usage()
             exit(1)
