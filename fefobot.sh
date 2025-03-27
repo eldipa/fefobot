@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
             force_clone=1
             ;;
         -j|--joern-path)
-            echo "$2"
+            joern_path="$2"
             shift 1
             ;;
         *)
