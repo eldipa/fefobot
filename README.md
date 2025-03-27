@@ -5,7 +5,6 @@
 
 Prerequisites:
  - Python 3
- - pip
  - Joern [installed and available in PATH](https://docs.joern.io/installation/). Use version `v2.0.128`
 
 ```shell
@@ -13,7 +12,6 @@ $ git clone git@github.com:eldipa/fefobot.git
 
 $ cd fefobot
 $ chmod u+x issue_processor fefobot.sh test.sh
-$ pip install -r requirements.txt
 ```
 
 **Note:** The code was tested using `joern` `v2.0.128`. Other version
