@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 [-f|--force-clone] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
+    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
     echo "Example: $0 /home/user/correcciones/ 2024c2 sockets 2 student-github-user v42"
     echo "Example: $0 /home/user/correcciones/ 2024c2 threads 1 student-github-user"
     echo
@@ -14,16 +14,22 @@ usage() {
     echo "Note: if not <release> is given, find the 'latest'."
     echo
     echo "Note: <workdir> must exists."
+    echo "Note: <joern-path> defaults to $HOME/bin/joern/joern-cli/joern"
     exit 1
 }
 
 force_clone=0
+joern_path="$HOME/bin/joern/joern-cli/joern"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
         -f|--force-clone)
             force_clone=1
+            ;;
+        -j|--joern-path)
+            echo "$2"
+            shift 1
             ;;
         *)
             if [ -z "$workdir" ]; then
@@ -64,7 +70,12 @@ if [ ! -d "$workdir" ]; then
     echo "Working directory '$workdir' does not exist. Please, create manually one before continuing."
     echo
     usage
-    exit 1
+fi
+
+if [ -z "$joern_path" ]; then
+    echo "Defaulting to joern path at $HOME/bin/joern/joern-cli/joern"
+    echo
+    joern_path="$HOME/bin/joern/joern-cli/joern"
 fi
 
 # Where fefobot's scripts live
@@ -299,7 +310,7 @@ issue_json_fname="issues-$public_git_repo.json"
 issue_md_fname="issues-$public_git_repo.md"
 prepare_working_copy_for_joern "$public_git_repo" "$private_joern_repo"
 
-run_joern_issue_detection "$private_joern_repo" "$issue_json_fname" "/home/user/bin/joern/joern-cli/joern"
+run_joern_issue_detection "$private_joern_repo" "$issue_json_fname" "$joern_path"
 
 echo "Issues detected by Joern saved in $issue_json_fname"
 
