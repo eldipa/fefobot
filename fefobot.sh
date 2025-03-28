@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
+    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
     echo "Example: $0 /home/user/correcciones/ 2024c2 sockets 2 student-github-user v42"
     echo "Example: $0 /home/user/correcciones/ 2024c2 threads 1 student-github-user"
     echo
@@ -15,9 +15,11 @@ usage() {
     echo
     echo "Note: <workdir> must exists."
     echo "Note: <joern-path> defaults to $HOME/bin/joern/joern-cli/joern"
+    echo "Note: -p will push the generated issues (markdown) to the repository"
     exit 1
 }
 
+push=0
 force_clone=0
 joern_path="$HOME/bin/joern/joern-cli/joern"
 
@@ -30,6 +32,9 @@ while [[ $# -gt 0 ]]; do
         -j|--joern-path)
             joern_path="$2"
             shift 1
+            ;;
+        -p|--push)
+            push=1
             ;;
         *)
             if [ -z "$workdir" ]; then
@@ -334,3 +339,8 @@ set -x
 "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset"
 set +x
 echo "Markdown file saved in $issue_md_fname"
+
+if [ "$push" = "1" ]; then
+    echo "Pushing markdown file into the repo..."
+    gh issue create --repo "Taller-de-Programacion-TPs/$repo_name" --title "[DRAFT] Correcciones" -F "$issue_md_fname" &> /dev/null
+fi
