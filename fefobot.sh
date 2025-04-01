@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
+    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] [-r|--reviewer] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
     echo "Example: $0 /home/user/correcciones/ 2024c2 sockets 2 student-github-user v42"
     echo "Example: $0 /home/user/correcciones/ 2024c2 threads 1 student-github-user"
     echo
@@ -15,6 +15,7 @@ usage() {
     echo
     echo "Note: <workdir> must exists."
     echo "Note: <joern-path> defaults to $HOME/bin/joern/joern-cli/joern"
+    echo "Note: -r specifies the code reviewer inside the markdown file"
     echo "Note: -p will push the generated issues (markdown) to the repository"
     exit 1
 }
@@ -22,6 +23,7 @@ usage() {
 push=0
 force_clone=0
 joern_path="$HOME/bin/joern/joern-cli/joern"
+reviewer=""
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -35,6 +37,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--push)
             push=1
+            ;;
+        -r|--reviewer)
+            reviewer="$2"
+            shift 1
             ;;
         *)
             if [ -z "$workdir" ]; then
@@ -335,9 +341,15 @@ else
 fi
 
 echo "Creating markdown..."
-set -x
-"$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset"
-set +x
+if [ -z "$reviewer" ]; then
+    set -x
+    "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset"
+    set +x
+else
+    set -x
+    "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset" "$reviewer"
+    set +x
+fi
 echo "Markdown file saved in $issue_md_fname"
 
 if [ "$push" = "1" ]; then
