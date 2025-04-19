@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] [-r|--reviewer] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
+    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] [-r|--reviewer <reviewer>] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
     echo "Example: $0 /home/user/correcciones/ 2024c2 sockets 2 student-github-user v42"
     echo "Example: $0 /home/user/correcciones/ 2024c2 threads 1 student-github-user"
     echo
@@ -341,15 +341,9 @@ else
 fi
 
 echo "Creating markdown..."
-if [ -z "$reviewer" ]; then
-    set -x
-    "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset"
-    set +x
-else
-    set -x
-    "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset" "$reviewer"
-    set +x
-fi
+set -x
+"$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset" "$reviewer"
+set +x
 echo "Markdown file saved in $issue_md_fname"
 
 if [ "$push" = "1" ]; then

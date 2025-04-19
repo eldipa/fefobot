@@ -352,10 +352,10 @@ class IssueFormatter(IssueProcessor):
         ))
 
     def write_reviewer_user(self, reviewer):
-        self.out_chunks.append(f"**Corrector:** {reviewer}")
+        self.out_chunks.append(f"**Corrector:** @{reviewer}")
 
     def close(self):
-        if reviewer is not None:
+        if reviewer:
             self.write_reviewer_user(reviewer)
         with open(f"{self.output_filename}.md", 'w') as f:
             for chunk in self.out_chunks:
@@ -637,8 +637,8 @@ if __name__ == '__main__':
             repo_name = sys.argv[3]
             last_commit_hash = sys.argv[4]
             src_lineno_offset = int(sys.argv[5])
-            reviewer = sys.argv[6] if len(sys.argv) == 7 else None
-            assert 6 <= len(sys.argv) <= 7
+            reviewer = sys.argv[6].strip()
+            assert len(sys.argv) == 7
         except:
             usage()
             exit(1)
