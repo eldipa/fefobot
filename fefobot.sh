@@ -354,5 +354,5 @@ echo "Markdown file saved in $issue_md_fname"
 
 if [ "$push" = "1" ]; then
     echo "Pushing markdown file into the repo..."
-    gh issue create --repo "Taller-de-Programacion-TPs/$repo_name" --title "[DRAFT] Correcciones" -F "$issue_md_fname" &> /dev/null
+    gh issue create --repo "Taller-de-Programacion-TPs/$repo_name" --title "[DRAFT] Correcciones - Nota: TBD" -F "$issue_md_fname" &> /dev/null
 fi
