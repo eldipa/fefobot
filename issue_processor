@@ -622,6 +622,15 @@ if __name__ == '__main__':
         usage()
         exit(1)
 
+    blocked = set()
+    blockfile = os.getenv("FEFOBOT_BLOCKFILE", None)
+    if blockfile:
+        if not os.path.exists(blockfile):
+            print(f"Blockfile '{blockfile}' does not exist (FEFOBOT_BLOCKFILE env var). Bad file path?")
+            exit(1)
+
+        blocked = set(line.strip() for line in open(blockfile, 'rt') if line.strip() and not line.strip().startswith('#'))
+
     if operation_mode == 'format':
         try:
             issue_file = sys.argv[2]
@@ -661,6 +670,9 @@ if __name__ == '__main__':
         proc = IssueSerializer(repo_name, src_lineno_offset, issue_file.replace(".json", ""))
 
     for issue_name, occurrences in read_issues(issue_file, operation_mode).items():
+        if issue_name in blocked:
+            continue
+
         proc.process_issue(issue_name, occurrences)
 
     proc.close()

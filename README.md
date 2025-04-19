@@ -66,6 +66,13 @@ Running `fefobot` will:
 check them and remove them. It can also contain false negatives
 so the reviewer **must** manually review the code.
 
+**Note:** if the `FEFOBOT_BLOCKFILE` environment variable is passed to
+`fefobot.sh`, and if it contains the path to a file, the script will
+read from there the names of the queries that should *not* be
+considered (they should be skipped).
+The file must contain 1 query name per line, empty lines and lines
+starting with `#` are ignored.
+
 ## Run the test
 
 ```shell
