@@ -154,18 +154,25 @@ clone_release() {
 
     cd "$dst_folder"
 
+    # Get the releases
     gh release list > RELEASES
+
+    # Now, take the last column and add it as the first column. Then sort (by time)
+    # and write back the RELEASES file stripping the first (added) column
+    cat RELEASES | awk '{print $NF}' > RELEASES.timestaps_col
+    paste RELEASES.timestaps_col RELEASES | sort -r | cut -f 2- > RELEASES.tmp
+    mv RELEASES.tmp RELEASES
     local tag;
 
     if [ "$release" = 'LATEST' ]; then
-        tag=$(cat RELEASES | grep '\sLatest\s' | sed 's/\sLatest\s/\t/g' | sed 's/\sPre-release\s/\t/g' | awk -F'\t' '{print $2}' | head -1)
+        tag=$(head -1 RELEASES | cut -f 3 | head -1)
     else
-        tag=$(cat RELEASES | sed 's/\sLatest\s/\t/g' | sed 's/\sPre-release\s/\t/g' | grep "^$release\s" | awk -F'\t' '{print $2}' | head -1)
+        tag=$(grep "^$release\s" RELEASES | cut -f 3 | head -1)
     fi
 
     echo "Releases found:"
     cat RELEASES
-    rm RELEASES
+    rm RELEASES RELEASES.timestaps_col
 
     if [ -z "$tag" ]; then
         echo "Tag for release '$release' not found. Abort"
