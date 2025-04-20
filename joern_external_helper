@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+import sys, os, os.path
+
+import json, subprocess
+
+class IssueFinder:
+    def __init__(self, private_joern_repo):
+        self.process_method_prefix = 'find'
+        self.private_joern_repo = private_joern_repo
+        assert ":" not in private_joern_repo
+
+    def _find_issues_by_grepping(self, target_dir, code_name, regex_str, min_cnt):
+        occurrences = []
+
+        # Grep recursively. Check for ret codes different of 0 (success), and 1 (no match).
+        ret = subprocess.run(['grep', '-rnH', "--include=*.cpp", regex_str, target_dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if ret.returncode not in (0, 1):
+            raise Exception(f"Grep failed:\nstdout: {ret.stdout}\nstderr: {ret.stderr}")
+
+        out = ret.stdout.decode('utf8')
+        for line in out.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+
+            filename, lineno, src = line.split(":", 2)
+            if not os.path.exists(filename):
+                raise Exception(f"Bad parsing filename on line {line} -> filename: {filename}; lineno: {lineno}")
+
+            # strip root folder
+            assert filename.startswith(target_dir)
+            filename = filename[len(target_dir):]
+
+            try:
+                lineno = int(lineno)
+            except ValueError:
+                raise Exception(f"Bad parsing lineno on line {line} -> filename: {filename}; lineno: {lineno}")
+
+            occurrences.append({
+                "method" : {
+                    "id" : 0,
+                    "lineNumber" : lineno,
+                    "lineNumberEnd" : lineno,
+                    "code" : src,
+                    "name" : code_name,
+                    "filename" : filename,
+                    "fullName" : code_name,
+                    "signature" : code_name
+                    }
+                })
+
+        # It is an issue if more than N is found
+        if len(occurrences) < min_cnt:
+            return []
+
+        return occurrences
+
+    def process_rule_fallback(self, rule_name):
+        raise Exception(f"Rule  name '{rule_name}' has no {self.process_method_prefix} method associated.")
+
+    def process_rule(self, rule_name):
+        cmd = f'{self.process_method_prefix}_{rule_name}'
+
+        method = getattr(self, cmd, None)
+        if method == None:
+            return self.process_rule_fallback(rule_name)
+        else:
+            return method()
+
+    def find_moreThanOneMutex(self):
+        # Possible 'std::mutex' instantiations
+        return self._find_issues_by_grepping(self.private_joern_repo, 'std::mutex', r'std::mutex[ ]\+[a-Z_]', min_cnt=2)
+
+    def find_stdThreadUsed(self):
+        # Possible 'std::thread' instantiations
+        return self._find_issues_by_grepping(self.private_joern_repo, 'std::thread', r'std::thread[ ]\+[a-Z_]', min_cnt=0)
+
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        sys.exit(1)
+
+    rule_name = sys.argv[1]
+
+    private_joern_repo = sys.argv[2]
+    private_joern_repo = os.path.abspath(private_joern_repo)
+
+    detector = IssueFinder(private_joern_repo)
+    occurrences = detector.process_rule(rule_name)
+
+    print(json.dumps(occurrences))

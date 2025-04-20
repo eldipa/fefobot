@@ -289,7 +289,7 @@ run_joern_issue_detection() {
     echo "Running Joern"
     set -x
     echo -e "//> using file $SCRIPT_DIR/joern_commands.scala" > ../importer.scala
-    FEFOBOT_RUNNING=1 FEFOBOT_ISSUE_FNAME="$issue_fname" TERM=dumb "$joern_bin" --nocolors < ../importer.scala 2>&1 | tee ../joern_last_run.log
+    FEFOBOT_RUNNING=1 FEFOBOT_ISSUE_FNAME="$issue_fname" TERM=dumb JOERN_EXTERNAL_HELPER="$SCRIPT_DIR/joern_external_helper" "$joern_bin" --nocolors < ../importer.scala 2>&1 | tee ../joern_last_run.log
     set +x
 
     if [ ! -s "$issue_fname" ]; then

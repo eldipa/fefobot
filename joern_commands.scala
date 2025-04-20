@@ -1,5 +1,9 @@
 import java.nio.file.{Paths, Files}
 import java.nio.charset.StandardCharsets
+import scala.sys.process._
+
+// Let Joern try to exec this (if the env var is not given, the default (a literal string) should fail anyways)
+val joernExternalHelperBin = System.getenv().getOrDefault("JOERN_EXTERNAL_HELPER", "JOERN_EXTERNAL_HELPER")
 
 val projectName = System.getProperty("user.dir").split("/").last
 importCode.cpp(inputPath = ".", projectName = projectName)

@@ -11,7 +11,7 @@ Prerequisites:
 $ git clone git@github.com:eldipa/fefobot.git
 
 $ cd fefobot
-$ chmod u+x issue_processor fefobot.sh test.sh
+$ chmod u+x issue_processor joern_external_helper fefobot.sh test.sh
 ```
 
 **Note:** The code was tested using `joern` `v2.0.128`. Other version
