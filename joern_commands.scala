@@ -53,7 +53,6 @@ val extractInfoFromMethod = (method: io.shiftleft.codepropertygraph.generated.no
 // Variable where we are going to collect the results of the queries to be processed
 // later by markdown_issue_builder
 val issuesDetected = scala.collection.mutable.Map[String, String]()
-var issueCount = 0;
 
 // Queries
 //
@@ -136,10 +135,8 @@ try {
       "method" -> extractInfoFromMethod(method),
       "hasAppLogic" -> _appLogicMethods.contains(method),
       "hasProtocolSocketLogic" -> _protocolRelatedLogicMethods.contains(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("mixingLogic").size;
 } catch {
   case err => issuesDetected += ("mixingLogic" -> ("ERROR: " + err));
 }
@@ -151,10 +148,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("possibleEndiannessHandlingByHandCalls").size;
 } catch {
   case err => issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> ("ERROR: " + err));
 }
@@ -168,10 +163,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("maybeMisuseSendRecv").size;
 } catch {
   case err => issuesDetected += ("maybeMisuseSendRecv" -> ("ERROR: " + err));
 }
@@ -184,10 +177,8 @@ try {
   issuesDetected += ("possibleLowLevelProtocolMethods" -> possibleLowLevelProtocolMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("possibleLowLevelProtocolMethods").size;
 } catch {
   case err => issuesDetected += ("possibleLowLevelProtocolMethods" -> ("ERROR: " + err));
 }
@@ -202,10 +193,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("cFuncCalls").size;
 } catch {
   case err => issuesDetected += ("cFuncCalls" -> ("ERROR: " + err));
 }
@@ -217,10 +206,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("cAllocCalls").size;
 } catch {
   case err => issuesDetected += ("cAllocCalls" -> ("ERROR: " + err));
 }
@@ -237,10 +224,8 @@ try {
     Map(
       "local" -> extractInfoFromLocal(local),
       "method" -> extractInfoFromMethod(local.method.head),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("globalVariables").size;
 } catch {
   case err => issuesDetected += ("globalVariables" -> ("ERROR: " + err));
 }
@@ -265,10 +250,8 @@ try {
     Map(
       "parameter" -> extractInfoFromParameter(parameter),
       "method" -> extractInfoFromMethod(parameter.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("maybeUnneededPassByPtr").size;
 } catch {
   case err => issuesDetected += ("maybeUnneededPassByPtr" -> ("ERROR: " + err));
 }
@@ -280,10 +263,8 @@ try {
     Map(
       "parameter" -> extractInfoFromParameter(parameter),
       "method" -> extractInfoFromMethod(parameter.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("passByValueNonTrivialObjects").size;
 } catch {
   case err => issuesDetected += ("passByValueNonTrivialObjects" -> ("ERROR: " + err));
 }
@@ -306,10 +287,8 @@ try {
   issuesDetected += ("globalFunctions" -> globalFuncMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("globalFunctions").size;
 } catch {
   case err => issuesDetected += ("globalFunctions" -> ("ERROR: " + err));
 }
@@ -330,10 +309,8 @@ try {
     Map(
       "local" -> extractInfoFromLocal(local),
       "method" -> extractInfoFromMethod(local.method.head),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("stackBufferAllocated").size;
 } catch {
   case err => issuesDetected += ("stackBufferAllocated" -> ("ERROR: " + err));
 }
@@ -348,10 +325,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("vectorBufferAllocated").size;
 } catch {
   case err => issuesDetected += ("vectorBufferAllocated" -> ("ERROR: " + err));
 }
@@ -364,10 +339,8 @@ try {
   issuesDetected += ("longMethods" -> longMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("longMethods").size;
 } catch {
   case err => issuesDetected += ("longMethods" -> ("ERROR: " + err));
 }
@@ -386,10 +359,8 @@ try {
   issuesDetected += ("tooManyNestedLoopsMethods" -> tooManyNestedLoopsMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("tooManyNestedLoopsMethods").size;
 } catch {
   case err => issuesDetected += ("tooManyNestedLoopsMethods" -> ("ERROR: " + err));
 }
@@ -399,10 +370,8 @@ try {
   issuesDetected += ("switchWithoutDefaultMethods" -> switchWithoutDefaultMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("switchWithoutDefaultMethods").size;
 } catch {
   case err => issuesDetected += ("switchWithoutDefaultMethods" -> ("ERROR: " + err));
 }
@@ -414,10 +383,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("libErrorThrowCalls").size;
 } catch {
   case err => issuesDetected += ("libErrorThrowCalls" -> ("ERROR: " + err));
 }

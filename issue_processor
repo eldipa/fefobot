@@ -669,7 +669,15 @@ if __name__ == '__main__':
 
         proc = IssueSerializer(repo_name, src_lineno_offset, issue_file.replace(".json", ""))
 
-    for issue_name, occurrences in read_issues(issue_file, operation_mode).items():
+    # assign an unique id to each issue
+    issue_id = 0
+    issues = read_issues(issue_file, operation_mode)
+    for issue_name, occurrences in issues.items():
+        for occurrence in occurrences:
+            occurrence["issue_id"] = issue_id
+            issue_id += 1
+
+    for issue_name, occurrences in issues.items():
         if issue_name in blocked:
             continue
 
