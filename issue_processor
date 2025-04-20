@@ -298,6 +298,39 @@ class IssueFormatter(IssueProcessor):
                 single_line=False
                 )
 
+    def format_lockCalls(self, occurrences):
+        self._format_issue(
+                "Deberias usar unique_lock o lock_guard",
+                "Llamar explicitamente a lock() de un mutex es peligroso por q te obligas a no olvidarte de llamar al unlock(). Preferi usar RAII.",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
+    def format_moreThanOneMutex(self, occurrences):
+        self._format_issue(
+                "Parece haber mas de un mutex/monitor, este TP lo necesita?",
+                "",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
+    def format_stdThreadUsed(self, occurrences):
+        self._format_issue(
+                "Parece que estas usando std::thread en vez de la clase Thread.",
+                "",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
     if False:
         def format_possibleLowLevelProtocolMethods(self, occurrences):
             self._format_issue(

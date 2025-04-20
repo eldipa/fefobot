@@ -393,6 +393,37 @@ try {
   case err => issuesDetected += ("libErrorThrowCalls" -> ("ERROR: " + err));
 }
 
+// Likely the student is calling explicitly to lock()/try_lock() on a mutex instead of using unique_lock or similar
+// Note: in the regex, the (->|.) is to ensure that we are seeing an attribute lookup; joern may see
+// std::lock as a field access too.
+var lockCalls = cpg.fieldAccess.code(raw".*(->|\.)[ ]*lock").toSet | cpg.fieldAccess.code(raw".*(->|\.)[ ]*try_lock").toSet;
+try {
+  issuesDetected += ("lockCalls" -> lockCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("lockCalls" -> ("ERROR: " + err));
+}
+
+
+try {
+  issuesDetected += ("moreThanOneMutex" -> s"$joernExternalHelperBin moreThanOneMutex ./".!!);
+} catch {
+  case err => issuesDetected += ("moreThanOneMutex" -> ("ERROR: " + err));
+}
+
+
+try {
+  issuesDetected += ("stdThreadUsed" -> s"$joernExternalHelperBin stdThreadUsed ./".!!);
+} catch {
+  case err => issuesDetected += ("stdThreadUsed" -> ("ERROR: " + err));
+}
+
+
+
 // Nice things to have for FefoBot 3.0:
 //  - detect commented code: I have no idea how to do it, joern does not have support (apparently).
 //  - remove the false positive of cout calls that are not app-logic but error-logic
