@@ -7,7 +7,7 @@ import json, collections
 github_permalink_template = "https://github.com/Taller-de-Programacion-TPs/{}/blob/{}/{}#L{}-L{}"
 
 def read_issues(filename, mode):
-    if mode == 'serialize':
+    if mode == 'format':
         def p(*args, **kargs):
             print(*args, **kargs)
     else:
