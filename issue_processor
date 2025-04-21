@@ -323,11 +323,22 @@ class IssueFormatter(IssueProcessor):
     def format_stdThreadUsed(self, occurrences):
         self._format_issue(
                 "Parece que estas usando std::thread en vez de la clase Thread.",
-                "",
+                "No es que esta mal usar std::thread, pero la API de C++ no te permite encapsular.",
                 True,
                 occurrences,
                 2,
                 'method',
+                single_line=True
+                )
+
+    def format_sleepCalls(self, occurrences):
+        self._format_issue(
+                "No deberias usar sleep() para sincronizar threads.",
+                "",
+                True,
+                occurrences,
+                2,
+                'call',
                 single_line=True
                 )
 

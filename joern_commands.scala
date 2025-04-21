@@ -422,6 +422,19 @@ try {
   case err => issuesDetected += ("stdThreadUsed" -> ("ERROR: " + err));
 }
 
+// NOTE: this has some false negatives
+// Eg: std::this_thread::sleep_for(milliseconds_to_sleep);  not a call???
+var sleepCalls = cpg.call.name("(u)?sleep.*").toSet;
+try {
+  issuesDetected += ("sleepCalls" -> sleepCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("sleepCalls" -> ("ERROR: " + err));
+}
 
 
 // Nice things to have for FefoBot 3.0:
