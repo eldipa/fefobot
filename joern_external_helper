@@ -30,6 +30,8 @@ class IssueFinder:
             # strip root folder
             assert filename.startswith(target_dir)
             filename = filename[len(target_dir):]
+            if filename.startswith("/"):
+                filename = filename[1:]
 
             try:
                 lineno = int(lineno)
