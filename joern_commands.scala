@@ -1,5 +1,9 @@
 import java.nio.file.{Paths, Files}
 import java.nio.charset.StandardCharsets
+import scala.sys.process._
+
+// Let Joern try to exec this (if the env var is not given, the default (a literal string) should fail anyways)
+val joernExternalHelperBin = System.getenv().getOrDefault("JOERN_EXTERNAL_HELPER", "JOERN_EXTERNAL_HELPER")
 
 val projectName = System.getProperty("user.dir").split("/").last
 importCode.cpp(inputPath = ".", projectName = projectName)
@@ -53,7 +57,6 @@ val extractInfoFromMethod = (method: io.shiftleft.codepropertygraph.generated.no
 // Variable where we are going to collect the results of the queries to be processed
 // later by markdown_issue_builder
 val issuesDetected = scala.collection.mutable.Map[String, String]()
-var issueCount = 0;
 
 // Queries
 //
@@ -136,10 +139,8 @@ try {
       "method" -> extractInfoFromMethod(method),
       "hasAppLogic" -> _appLogicMethods.contains(method),
       "hasProtocolSocketLogic" -> _protocolRelatedLogicMethods.contains(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("mixingLogic").size;
 } catch {
   case err => issuesDetected += ("mixingLogic" -> ("ERROR: " + err));
 }
@@ -151,10 +152,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("possibleEndiannessHandlingByHandCalls").size;
 } catch {
   case err => issuesDetected += ("possibleEndiannessHandlingByHandCalls" -> ("ERROR: " + err));
 }
@@ -168,10 +167,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("maybeMisuseSendRecv").size;
 } catch {
   case err => issuesDetected += ("maybeMisuseSendRecv" -> ("ERROR: " + err));
 }
@@ -184,10 +181,8 @@ try {
   issuesDetected += ("possibleLowLevelProtocolMethods" -> possibleLowLevelProtocolMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("possibleLowLevelProtocolMethods").size;
 } catch {
   case err => issuesDetected += ("possibleLowLevelProtocolMethods" -> ("ERROR: " + err));
 }
@@ -202,10 +197,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("cFuncCalls").size;
 } catch {
   case err => issuesDetected += ("cFuncCalls" -> ("ERROR: " + err));
 }
@@ -217,10 +210,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("cAllocCalls").size;
 } catch {
   case err => issuesDetected += ("cAllocCalls" -> ("ERROR: " + err));
 }
@@ -237,10 +228,8 @@ try {
     Map(
       "local" -> extractInfoFromLocal(local),
       "method" -> extractInfoFromMethod(local.method.head),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("globalVariables").size;
 } catch {
   case err => issuesDetected += ("globalVariables" -> ("ERROR: " + err));
 }
@@ -265,10 +254,8 @@ try {
     Map(
       "parameter" -> extractInfoFromParameter(parameter),
       "method" -> extractInfoFromMethod(parameter.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("maybeUnneededPassByPtr").size;
 } catch {
   case err => issuesDetected += ("maybeUnneededPassByPtr" -> ("ERROR: " + err));
 }
@@ -280,10 +267,8 @@ try {
     Map(
       "parameter" -> extractInfoFromParameter(parameter),
       "method" -> extractInfoFromMethod(parameter.method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("passByValueNonTrivialObjects").size;
 } catch {
   case err => issuesDetected += ("passByValueNonTrivialObjects" -> ("ERROR: " + err));
 }
@@ -306,10 +291,8 @@ try {
   issuesDetected += ("globalFunctions" -> globalFuncMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("globalFunctions").size;
 } catch {
   case err => issuesDetected += ("globalFunctions" -> ("ERROR: " + err));
 }
@@ -330,10 +313,8 @@ try {
     Map(
       "local" -> extractInfoFromLocal(local),
       "method" -> extractInfoFromMethod(local.method.head),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("stackBufferAllocated").size;
 } catch {
   case err => issuesDetected += ("stackBufferAllocated" -> ("ERROR: " + err));
 }
@@ -348,10 +329,8 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("vectorBufferAllocated").size;
 } catch {
   case err => issuesDetected += ("vectorBufferAllocated" -> ("ERROR: " + err));
 }
@@ -364,10 +343,8 @@ try {
   issuesDetected += ("longMethods" -> longMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("longMethods").size;
 } catch {
   case err => issuesDetected += ("longMethods" -> ("ERROR: " + err));
 }
@@ -386,10 +363,8 @@ try {
   issuesDetected += ("tooManyNestedLoopsMethods" -> tooManyNestedLoopsMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("tooManyNestedLoopsMethods").size;
 } catch {
   case err => issuesDetected += ("tooManyNestedLoopsMethods" -> ("ERROR: " + err));
 }
@@ -399,10 +374,8 @@ try {
   issuesDetected += ("switchWithoutDefaultMethods" -> switchWithoutDefaultMethods.zipWithIndex.map({case (method, ix) => {
     Map(
       "method" -> extractInfoFromMethod(method),
-      "issue_id" -> (ix + issueCount).toString
       );
     }}).toJsonPretty);
-    issueCount += issuesDetected.get("switchWithoutDefaultMethods").size;
 } catch {
   case err => issuesDetected += ("switchWithoutDefaultMethods" -> ("ERROR: " + err));
 }
@@ -414,13 +387,55 @@ try {
     Map(
       "call" -> extractInfoFromCall(call),
       "method" -> extractInfoFromMethod(call.method),
-      "issue_id" -> (ix + issueCount).toString
       );
   }}).toJsonPretty);
-    issueCount += issuesDetected.get("libErrorThrowCalls").size;
 } catch {
   case err => issuesDetected += ("libErrorThrowCalls" -> ("ERROR: " + err));
 }
+
+// Likely the student is calling explicitly to lock()/try_lock() on a mutex instead of using unique_lock or similar
+// Note: in the regex, the (->|.) is to ensure that we are seeing an attribute lookup; joern may see
+// std::lock as a field access too.
+var lockCalls = cpg.fieldAccess.code(raw".*(->|\.)[ ]*lock").toSet | cpg.fieldAccess.code(raw".*(->|\.)[ ]*try_lock").toSet;
+try {
+  issuesDetected += ("lockCalls" -> lockCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("lockCalls" -> ("ERROR: " + err));
+}
+
+
+try {
+  issuesDetected += ("moreThanOneMutex" -> s"$joernExternalHelperBin moreThanOneMutex ./".!!);
+} catch {
+  case err => issuesDetected += ("moreThanOneMutex" -> ("ERROR: " + err));
+}
+
+
+try {
+  issuesDetected += ("stdThreadUsed" -> s"$joernExternalHelperBin stdThreadUsed ./".!!);
+} catch {
+  case err => issuesDetected += ("stdThreadUsed" -> ("ERROR: " + err));
+}
+
+// NOTE: this has some false negatives
+// Eg: std::this_thread::sleep_for(milliseconds_to_sleep);  not a call???
+var sleepCalls = cpg.call.name("(u)?sleep.*").toSet;
+try {
+  issuesDetected += ("sleepCalls" -> sleepCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("sleepCalls" -> ("ERROR: " + err));
+}
+
 
 // Nice things to have for FefoBot 3.0:
 //  - detect commented code: I have no idea how to do it, joern does not have support (apparently).

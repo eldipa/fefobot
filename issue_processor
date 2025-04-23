@@ -7,7 +7,7 @@ import json, collections
 github_permalink_template = "https://github.com/Taller-de-Programacion-TPs/{}/blob/{}/{}#L{}-L{}"
 
 def read_issues(filename, mode):
-    if mode == 'serialize':
+    if mode == 'format':
         def p(*args, **kargs):
             print(*args, **kargs)
     else:
@@ -298,6 +298,50 @@ class IssueFormatter(IssueProcessor):
                 single_line=False
                 )
 
+    def format_lockCalls(self, occurrences):
+        self._format_issue(
+                "Deberias usar unique_lock o lock_guard",
+                "Llamar explicitamente a lock() de un mutex es peligroso por q te obligas a no olvidarte de llamar al unlock(). Preferi usar RAII.",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
+    def format_moreThanOneMutex(self, occurrences):
+        self._format_issue(
+                "Parece haber mas de un mutex/monitor, este TP lo necesita?",
+                "",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
+    def format_stdThreadUsed(self, occurrences):
+        self._format_issue(
+                "Parece que estas usando std::thread en vez de la clase Thread.",
+                "No es que esta mal usar std::thread, pero la API de C++ no te permite encapsular.",
+                True,
+                occurrences,
+                2,
+                'method',
+                single_line=True
+                )
+
+    def format_sleepCalls(self, occurrences):
+        self._format_issue(
+                "No deberias usar sleep() para sincronizar threads.",
+                "",
+                True,
+                occurrences,
+                2,
+                'call',
+                single_line=True
+                )
+
     if False:
         def format_possibleLowLevelProtocolMethods(self, occurrences):
             self._format_issue(
@@ -352,10 +396,10 @@ class IssueFormatter(IssueProcessor):
         ))
 
     def write_reviewer_user(self, reviewer):
-        self.out_chunks.append(f"**Corrector:** {reviewer}")
+        self.out_chunks.append(f"**Corrector:** @{reviewer}")
 
     def close(self):
-        if reviewer is not None:
+        if reviewer:
             self.write_reviewer_user(reviewer)
         with open(f"{self.output_filename}.md", 'w') as f:
             for chunk in self.out_chunks:
@@ -622,14 +666,23 @@ if __name__ == '__main__':
         usage()
         exit(1)
 
+    blocked = set()
+    blockfile = os.getenv("FEFOBOT_BLOCKFILE", None)
+    if blockfile:
+        if not os.path.exists(blockfile):
+            print(f"Blockfile '{blockfile}' does not exist (FEFOBOT_BLOCKFILE env var). Bad file path?")
+            exit(1)
+
+        blocked = set(line.strip() for line in open(blockfile, 'rt') if line.strip() and not line.strip().startswith('#'))
+
     if operation_mode == 'format':
         try:
             issue_file = sys.argv[2]
             repo_name = sys.argv[3]
             last_commit_hash = sys.argv[4]
             src_lineno_offset = int(sys.argv[5])
-            reviewer = sys.argv[6] if len(sys.argv) == 7 else None
-            assert 6 <= len(sys.argv) <= 7
+            reviewer = sys.argv[6].strip()
+            assert len(sys.argv) == 7
         except:
             usage()
             exit(1)
@@ -660,7 +713,18 @@ if __name__ == '__main__':
 
         proc = IssueSerializer(repo_name, src_lineno_offset, issue_file.replace(".json", ""))
 
-    for issue_name, occurrences in read_issues(issue_file, operation_mode).items():
+    # assign an unique id to each issue
+    issue_id = 0
+    issues = read_issues(issue_file, operation_mode)
+    for issue_name, occurrences in issues.items():
+        for occurrence in occurrences:
+            occurrence["issue_id"] = issue_id
+            issue_id += 1
+
+    for issue_name, occurrences in issues.items():
+        if issue_name in blocked:
+            continue
+
         proc.process_issue(issue_name, occurrences)
 
     proc.close()

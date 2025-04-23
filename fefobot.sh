@@ -4,7 +4,7 @@ set -e
 
 
 usage() {
-    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] [-r|--reviewer] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
+    echo "Usage: $0 [-f|--force-clone] [-j|--joern-path] [-p|--push] [-r|--reviewer <reviewer>] <workdir> <course> [sockets|threads] <n> <username> [<release>]"
     echo "Example: $0 /home/user/correcciones/ 2024c2 sockets 2 student-github-user v42"
     echo "Example: $0 /home/user/correcciones/ 2024c2 threads 1 student-github-user"
     echo
@@ -154,18 +154,25 @@ clone_release() {
 
     cd "$dst_folder"
 
+    # Get the releases
     gh release list > RELEASES
+
+    # Now, take the last column and add it as the first column. Then sort (by time)
+    # and write back the RELEASES file stripping the first (added) column
+    cat RELEASES | awk '{print $NF}' > RELEASES.timestaps_col
+    paste RELEASES.timestaps_col RELEASES | sort -r | cut -f 2- > RELEASES.tmp
+    mv RELEASES.tmp RELEASES
     local tag;
 
     if [ "$release" = 'LATEST' ]; then
-        tag=$(cat RELEASES | grep '\sLatest\s' | sed 's/\sLatest\s/\t/g' | sed 's/\sPre-release\s/\t/g' | awk -F'\t' '{print $2}' | head -1)
+        tag=$(head -1 RELEASES | cut -f 3 | head -1)
     else
-        tag=$(cat RELEASES | sed 's/\sLatest\s/\t/g' | sed 's/\sPre-release\s/\t/g' | grep "^$release\s" | awk -F'\t' '{print $2}' | head -1)
+        tag=$(grep "^$release\s" RELEASES | cut -f 3 | head -1)
     fi
 
     echo "Releases found:"
     cat RELEASES
-    rm RELEASES
+    rm RELEASES RELEASES.timestaps_col
 
     if [ -z "$tag" ]; then
         echo "Tag for release '$release' not found. Abort"
@@ -289,7 +296,7 @@ run_joern_issue_detection() {
     echo "Running Joern"
     set -x
     echo -e "//> using file $SCRIPT_DIR/joern_commands.scala" > ../importer.scala
-    FEFOBOT_RUNNING=1 FEFOBOT_ISSUE_FNAME="$issue_fname" TERM=dumb "$joern_bin" --nocolors < ../importer.scala 2>&1 | tee ../joern_last_run.log
+    FEFOBOT_RUNNING=1 FEFOBOT_ISSUE_FNAME="$issue_fname" TERM=dumb JOERN_EXTERNAL_HELPER="$SCRIPT_DIR/joern_external_helper" "$joern_bin" --nocolors < ../importer.scala 2>&1 | tee ../joern_last_run.log
     set +x
 
     if [ ! -s "$issue_fname" ]; then
@@ -341,18 +348,12 @@ else
 fi
 
 echo "Creating markdown..."
-if [ -z "$reviewer" ]; then
-    set -x
-    "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset"
-    set +x
-else
-    set -x
-    "$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset" "$reviewer"
-    set +x
-fi
+set -x
+"$SCRIPT_DIR/issue_processor" "format" "$issue_json_fname" "$repo_name" "$commit_hash" "$sourceCodeOffset" "$reviewer"
+set +x
 echo "Markdown file saved in $issue_md_fname"
 
 if [ "$push" = "1" ]; then
     echo "Pushing markdown file into the repo..."
-    gh issue create --repo "Taller-de-Programacion-TPs/$repo_name" --title "[DRAFT] Correcciones" -F "$issue_md_fname" &> /dev/null
+    gh issue create --repo "Taller-de-Programacion-TPs/$repo_name" --title "[DRAFT] Correcciones - Nota: TBD" -F "$issue_md_fname" &> /dev/null
 fi

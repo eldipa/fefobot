@@ -11,7 +11,7 @@ Prerequisites:
 $ git clone git@github.com:eldipa/fefobot.git
 
 $ cd fefobot
-$ chmod u+x issue_processor fefobot.sh test.sh
+$ chmod u+x issue_processor joern_external_helper fefobot.sh test.sh
 ```
 
 **Note:** The code was tested using `joern` `v2.0.128`. Other version
@@ -65,6 +65,13 @@ Running `fefobot` will:
 **Note:** the queries may have false positives, the reviewer **must**
 check them and remove them. It can also contain false negatives
 so the reviewer **must** manually review the code.
+
+**Note:** if the `FEFOBOT_BLOCKFILE` environment variable is passed to
+`fefobot.sh`, and if it contains the path to a file, the script will
+read from there the names of the queries that should *not* be
+considered (they should be skipped).
+The file must contain 1 query name per line, empty lines and lines
+starting with `#` are ignored.
 
 ## Run the test
 
