@@ -315,12 +315,13 @@ try {
 //
 // The _.signature(raw".*\..*") matches signature of the form Class.Method,
 // the _.signature(raw".* main\s*\(.*") matches the 'main()' functions
-// and the _.code("(<empty>|<global>)") are functions or methods with no source code
+// and the _.codeNot("(<empty>|<global>)") are functions or methods with no source code
 // which are likely to be from the system/OS/stdlib
+// The _.nameNot("^operator[ ]*<<") is to ignore these overload functions
 //
 // None of those represents student's real static/global functions so we search
 // for any method that does not match any of those.
-val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".* main\s*\(.*").codeNot("(<empty>|<global>)").toSet
+val globalFuncMethods = cpg.method.signatureNot(raw".*\..*").signatureNot(raw".* main\s*\(.*").codeNot("(<empty>|<global>)").nameNot(raw"^operator[ ]*<<").toSet
 try {
   issuesDetected += ("globalFunctions" -> globalFuncMethods.zipWithIndex.map({case (method, ix) => {
     Map(
