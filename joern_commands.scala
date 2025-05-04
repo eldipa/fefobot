@@ -245,8 +245,18 @@ try {
 // In this case we search all the locals where from each local we have a method with the special
 // name "<global>" which, obviosly means the locals not locals!
 //
-// Note: const/constexpr are ignored
-val globalVarsLocals = cpg.local.where(locals => locals.method.name(raw"\<global\>")).codeNot(raw"(constexpr|const)[ ].*").toSet;
+// Note: const/constexpr are ignored because Joern maps every STL type to ANY and swallows
+// the const/static modifiers.
+//
+// The hack is to query the real source code with readSourceCodeOfLocal().
+// This works to some extent: global variable definitions that span more than 1 line will not work
+// because Joern's Local has only 1 line number and not a range.
+val globalVarsLocals = cpg.local.where(locals => locals.method.name(raw"\<global\>")).filter(local => {
+  val src = readSourceCodeOfLocal(local);
+  val pattern = raw"(^(const|constexpr)([ ]|$$).*)|.*[ ](const|constexpr)([ ]|$$).*";
+
+  !src.linesIterator.exists(_.matches(pattern));
+}).toSet;
 try {
   issuesDetected += ("globalVariables" -> globalVarsLocals.zipWithIndex.map({case (local, ix) => {
     Map(
@@ -393,7 +403,15 @@ try {
   case err => issuesDetected += ("tooManyNestedLoopsMethods" -> ("ERROR: " + err));
 }
 
-var switchWithoutDefaultMethods = cpg.controlStructure.controlStructureType("SWITCH").method.codeNot(raw".*[ ]default[ ]*:.*").toSet;
+// Return the methods that contains a 'switch' control structure that lacks of a 'default' clause.
+// Note: we cannot use _.code or _.codeNot because Joern truncates results to large so trying to match
+// anything that it is not in the first lines of the method will yield bad results.
+var switchWithoutDefaultMethods = cpg.controlStructure.controlStructureType("SWITCH").method.filter(method => {
+  val src = readSourceCodeOfMethod(method);
+  val pattern = raw".*[ ]default[ ]*:.*";
+
+  !src.linesIterator.exists(_.matches(pattern));
+}).toSet;
 try {
   issuesDetected += ("switchWithoutDefaultMethods" -> switchWithoutDefaultMethods.zipWithIndex.map({case (method, ix) => {
     Map(
