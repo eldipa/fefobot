@@ -44,6 +44,14 @@ val extractInfoFromCall = (call: io.shiftleft.codepropertygraph.generated.nodes.
     );
 }
 
+val extractInfoFromFieldIdentifier = (fieldIdentifier: io.shiftleft.codepropertygraph.generated.nodes.FieldIdentifier) => {
+    Map(
+      "id" -> fieldIdentifier.id,
+      "lineNumber" -> fieldIdentifier.lineNumber,
+      "code" -> fieldIdentifier.code
+    );
+}
+
 val extractInfoFromLocal = (local: io.shiftleft.codepropertygraph.generated.nodes.Local) => {
     Map(
       "id" -> local.id,
@@ -479,6 +487,103 @@ try {
   case err => issuesDetected += ("sleepCalls" -> ("ERROR: " + err));
 }
 
+
+// Casts
+//  - static cast -> ok (hard to test if they are ok or not)
+//  - reinterpret cast -> ok only if it is between char/uint8_t, otherwise not ok (TODO this may have too false positives....)
+//  - const cast -> not ok (it is unlikely that it is even needed)
+//  - dynamic cast -> not ok (it is unlikely that it is even needed)
+var reinterpretCastCalls = cpg.call.name("<operator>.cast").code("^reinterpret_cast[ ]*.*").codeNot(raw".*<[^<]*(char|uint8_t)[^>]*>.*").toSet;
+try {
+  issuesDetected += ("reinterpretCastCalls" -> reinterpretCastCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("reinterpretCastCalls" -> ("ERROR: " + err));
+}
+
+var constCastCalls = cpg.call.name("<operator>.cast").code("^const_cast[ ]*.*").toSet;
+try {
+  issuesDetected += ("constCastCalls" -> constCastCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("constCastCalls" -> ("ERROR: " + err));
+}
+
+var dynamicCastCalls = cpg.call.name("<operator>.cast").code("^dynamic_cast[ ]*.*").toSet;
+try {
+  issuesDetected += ("dynamicCastCalls" -> dynamicCastCalls.zipWithIndex.map({case (call, ix) => {
+    Map(
+      "call" -> extractInfoFromCall(call),
+      "method" -> extractInfoFromMethod(call.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("dynamicCastCalls" -> ("ERROR: " + err));
+}
+
+// Variable taggued with "mutable"
+try {
+  issuesDetected += ("mutableVars" -> s"$joernExternalHelperBin mutableVars ./".!!);
+} catch {
+  case err => issuesDetected += ("mutableVars" -> ("ERROR: " + err));
+}
+
+// Find all the identifiers to 'unique_lock' that are at least 3 or more lines after the first
+// line of the method that uses it.
+// The hypothesis is that a lock not at the begin of the method may not be protecting correctly
+// the object.
+val lockNotAtBeginPossibleRCFieldIdentifiers = cpg.method.ast.isFieldIdentifier.code("unique_lock").map(
+  fieldIdentifier => {
+     (fieldIdentifier, fieldIdentifier.method.lineNumber, fieldIdentifier.lineNumber)
+  }).filter(
+  uple => {
+      uple(2).get.toInt - uple(1).get.toInt >= 3
+  }).map(uple => {uple(0)}).toSet;
+try {
+  issuesDetected += ("lockNotAtBeginPossibleRCFieldIdentifiers" -> lockNotAtBeginPossibleRCFieldIdentifiers.zipWithIndex.map({case (fieldIdentifier, ix) => {
+    Map(
+      "fieldIdentifier" -> extractInfoFromFieldIdentifier(fieldIdentifier),
+      "method" -> extractInfoFromMethod(fieldIdentifier.method),
+      );
+  }}).toJsonPretty);
+} catch {
+  case err => issuesDetected += ("lockNotAtBeginPossibleRCFieldIdentifiers" -> ("ERROR: " + err));
+}
+
+// Find the methods that contains a join() (joiners), a is_dead() (dead checkers) or a kill() (killers)
+// A method that is a joiner and a dead checker is a reaper; a joiner and a killer is a forceStopper (bad name, i know)
+//
+// If the code does not have a reaper, generate an issue.
+// If the code does not have a forceStopper, generate an issue too.
+val _joinersMethods = cpg.method.ast.isFieldIdentifier.code("join").method.toSet;
+val _deadCheckerMethods = cpg.method.ast.isFieldIdentifier.code(raw"is_dead|is_alive").method.toSet;
+val _killerMethods = cpg.method.ast.isFieldIdentifier.code(raw"kill|stop").method.toSet;
+val _reaperMethods = _joinersMethods & _deadCheckerMethods;
+val _forceStopperMethods = _joinersMethods & _killerMethods;
+
+if (_reaperMethods.size == 0 ) {
+  try {
+    issuesDetected += ("noReapers" -> "[{}]"); // TODO to check this
+  } catch {
+    case err => issuesDetected += ("noReapers" -> ("ERROR: " + err));
+  }
+}
+
+if (_forceStopperMethods.size == 0 ) {
+  try {
+    issuesDetected += ("noForceStoppers" -> "[{}]"); // TODO to check this
+  } catch {
+    case err => issuesDetected += ("noForceStoppers" -> ("ERROR: " + err));
+  }
+}
 
 // Nice things to have for FefoBot 3.0:
 //  - detect commented code: I have no idea how to do it, joern does not have support (apparently).
