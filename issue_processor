@@ -342,6 +342,83 @@ class IssueFormatter(IssueProcessor):
                 single_line=True
                 )
 
+    def format_reinterpretCastCalls(self, occurrences):
+        self._format_issue(
+                "No deberias usar reinterpret_cast salvo para castear desde y hacia char/uint8_t.",
+                "Usar `reinterpret_cast` para cuando no es desde ni hacia `char/uint8_t` esta basicamente indefinido.",
+                True,
+                occurrences,
+                2,
+                'call',
+                single_line=True
+                )
+
+    def format_constCastCalls(self, occurrences):
+        self._format_issue(
+                "No deberias necesitar usar const_cast.",
+                "Casteos const no deberias requerirlos y son un peligro si llegas a castear algo que realmente era const!",
+                True,
+                occurrences,
+                2,
+                'call',
+                single_line=True
+                )
+
+    def format_dynamicCastCalls(self, occurrences):
+        self._format_issue(
+                "No deberias necesitar usar dynamic_cast.",
+                "Downcast puede ser necesario solo en poquisimos casos. Usar polimorfismo.",
+                True,
+                occurrences,
+                2,
+                'call',
+                single_line=True
+                )
+
+    def format_mutableVars(self, occurrences):
+        self._format_issue(
+                "No deberias necesitar usar mutable.",
+                "",
+                True,
+                occurrences,
+                2,
+                'method',  # TODO -- a hack
+                single_line=True
+                )
+
+    def format_lockNotAtBeginPossibleRCFieldIdentifiers(self, occurrences):
+        self._format_issue(
+                "Puede que tengas una RC, este lock esta protegiendo todo el estado del monitor?",
+                "",
+                True,
+                occurrences,
+                2,
+                'fieldIdentifier',
+                single_line=True
+                )
+
+    def format_noReapers(self, occurrences):
+        self._format_issue(
+                "Puede que no estes limpiando los threads muertos?",
+                "",
+                True,
+                occurrences,
+                2,
+                'none',
+                single_line=True
+                )
+
+    def format_noForceStoppers(self, occurrences):
+        self._format_issue(
+                "Puede que no estes matando a los threads cuando se cierra el server?",
+                "",
+                True,
+                occurrences,
+                2,
+                'none',
+                single_line=True
+                )
+
     if False:
         def format_possibleLowLevelProtocolMethods(self, occurrences):
             self._format_issue(
@@ -360,12 +437,16 @@ class IssueFormatter(IssueProcessor):
         Format the issue showing a permalink to the 1 line code.
         The source code file is taken from occurrences['method']; the line number
         is taken from occurrences[obj_name].
+        If obj_name is 'none', no file or permalink is generated (no code exists).
         '''
-        assert obj_name in ['method', 'parameter', 'call', 'local']
-        occurrences, more, _ = self.pick_up_to(pick_up_cnt, occurrences)
-
+        assert obj_name in ['method', 'parameter', 'call', 'local', 'fieldIdentifier', 'none']
         self.write_title(title)
         self.write_desc(desc)
+
+        if obj_name == 'none':
+            return
+
+        occurrences, more, _ = self.pick_up_to(pick_up_cnt, occurrences)
 
         for occurrence in occurrences:
             filename = self.filename_of(occurrence)
