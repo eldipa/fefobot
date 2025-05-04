@@ -332,6 +332,9 @@ run_joern_issue_detection "$private_joern_repo" "$issue_json_fname" "$joern_path
 
 echo "Issues detected by Joern saved in $issue_json_fname"
 
+python "$SCRIPT_DIR/pretty.py" "$issue_json_fname" > "$issue_json_fname.pretty"
+echo "Issues pretty printed in $issue_json_fname.pretty for inspection/debug"
+
 # The sourceCodeOffset allows us to tell Joern that the source line numbers should be offset by this amount
 # Because in the step above we injected code, this made the code to have an offset that the original code
 # does not have so we need to compensate it.
