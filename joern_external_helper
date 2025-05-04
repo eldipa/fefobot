@@ -9,7 +9,7 @@ class IssueFinder:
         self.private_joern_repo = private_joern_repo
         assert ":" not in private_joern_repo
 
-    def _find_issues_by_grepping(self, target_dir, code_name, regex_str, min_cnt):
+    def _find_issues_by_grepping(self, target_dir, code_name, regex_str, min_cnt, create_occurrence):
         occurrences = []
 
         # Grep recursively. Check for ret codes different of 0 (success), and 1 (no match).
@@ -38,18 +38,7 @@ class IssueFinder:
             except ValueError:
                 raise Exception(f"Bad parsing lineno on line {line} -> filename: {filename}; lineno: {lineno}")
 
-            occurrences.append({
-                "method" : {
-                    "id" : 0,
-                    "lineNumber" : lineno,
-                    "lineNumberEnd" : lineno,
-                    "code" : src,
-                    "name" : code_name,
-                    "filename" : filename,
-                    "fullName" : code_name,
-                    "signature" : code_name
-                    }
-                })
+            occurrences.append(create_occurrence(src, filename, lineno, lineno, code_name))
 
         # It is an issue if more than N is found
         if len(occurrences) < min_cnt:
@@ -71,11 +60,29 @@ class IssueFinder:
 
     def find_moreThanOneMutex(self):
         # Possible 'std::mutex' instantiations
-        return self._find_issues_by_grepping(self.private_joern_repo, 'std::mutex', r'std::mutex[ ]\+[a-Z_]', min_cnt=2)
+        return self._find_issues_by_grepping(self.private_joern_repo, 'std::mutex', r'std::mutex[ ]\+[a-Z_]', min_cnt=2, create_occurrence=self._generate_issue_with_method_format)
 
     def find_stdThreadUsed(self):
         # Possible 'std::thread' instantiations
-        return self._find_issues_by_grepping(self.private_joern_repo, 'std::thread', r'std::thread[ ]\+[a-Z_]', min_cnt=0)
+        return self._find_issues_by_grepping(self.private_joern_repo, 'std::thread', r'std::thread[ ]\+[a-Z_]', min_cnt=0, create_occurrence=self._generate_issue_with_method_format)
+
+    def find_mutableVars(self):
+        # Possible 'mutable' var
+        return self._find_issues_by_grepping(self.private_joern_repo, 'mutable', r'mutable[ ]\+[a-Z_]', min_cnt=0, create_occurrence=self._generate_issue_with_method_format)
+
+    def _generate_issue_with_method_format(self, src, filename, lineno_begin, lineno_end, code_name):
+        return {
+                "method" : {
+                    "id" : 0,
+                    "lineNumber" : lineno_begin,
+                    "lineNumberEnd" : lineno_end,
+                    "code" : src,
+                    "name" : code_name,
+                    "filename" : filename,
+                    "fullName" : code_name,
+                    "signature" : code_name,
+                    }
+                }
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
