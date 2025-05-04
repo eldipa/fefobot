@@ -571,7 +571,7 @@ val _forceStopperMethods = _joinersMethods & _killerMethods;
 
 if (_reaperMethods.size == 0 ) {
   try {
-    issuesDetected += ("noReapers" -> "[{}]"); // TODO to check this
+    issuesDetected += ("noReapers" -> "[{}]");
   } catch {
     case err => issuesDetected += ("noReapers" -> ("ERROR: " + err));
   }
@@ -579,7 +579,7 @@ if (_reaperMethods.size == 0 ) {
 
 if (_forceStopperMethods.size == 0 ) {
   try {
-    issuesDetected += ("noForceStoppers" -> "[{}]"); // TODO to check this
+    issuesDetected += ("noForceStoppers" -> "[{}]");
   } catch {
     case err => issuesDetected += ("noForceStoppers" -> ("ERROR: " + err));
   }
