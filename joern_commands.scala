@@ -1,3 +1,4 @@
+import scala.io.Source
 import java.nio.file.{Paths, Files}
 import java.nio.charset.StandardCharsets
 import scala.sys.process._
@@ -7,6 +8,29 @@ val joernExternalHelperBin = System.getenv().getOrDefault("JOERN_EXTERNAL_HELPER
 
 val projectName = System.getProperty("user.dir").split("/").last
 importCode.cpp(inputPath = ".", projectName = projectName)
+
+// Return the content of the file between those 2 lines
+def readLinesBetween(filename: String, startLine: Int, endLine: Int): String = {
+  require(startLine > 0, "startLine must be greater than 0")
+  require(endLine >= startLine, "endLine must be greater than or equal to startLine")
+
+  val source = Source.fromFile(filename)
+  try {
+    source.getLines()
+      .slice(startLine - 1, endLine)
+      .mkString("\n")
+  } finally {
+    source.close()
+  }
+}
+
+def readSourceCodeOfLocal(local: io.shiftleft.codepropertygraph.generated.nodes.Local): String = {
+  readLinesBetween(local.method.filename.head, local.lineNumber.get.toInt, local.lineNumber.get.toInt);
+}
+
+def readSourceCodeOfMethod(method: io.shiftleft.codepropertygraph.generated.nodes.Method): String = {
+  readLinesBetween(method.filename, method.lineNumber.get.toInt, method.lineNumberEnd.get.toInt);
+}
 
 //val clientMessages = System.getenv().getOrDefault("sourceCodeOffset", "0").toInt
 
