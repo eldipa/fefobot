@@ -315,7 +315,7 @@ class IssueFormatter(IssueProcessor):
                 "",
                 True,
                 occurrences,
-                2,
+                8,
                 'method',
                 single_line=True
                 )
