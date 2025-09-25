@@ -217,6 +217,9 @@ prepare_working_copy_for_joern() {
     echo "Removing files of no interest before running Joern"
     cd "$dst_joern_folder"
 
+    # Delete any non file/directory
+    find . -not -type f -a -not -type d -delete
+
     # Delete any non source code file recursively
     find . -type f -a \( -not -name '*.cpp' -a -not -name '*.h' -a -not -name '*.fefobot' \) -delete
 
